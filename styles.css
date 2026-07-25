@@ -74,10 +74,11 @@ body {
   flex-shrink: 0;
 }
 .app-name {
-  font-size: 15px;
-  font-weight: 600;
+  font-family: 'Tiro Devanagari Hindi', serif;
+  font-size: 18px;
+  font-weight: 400;
   color: var(--ink);
-  letter-spacing: 0.4px;
+  letter-spacing: 0;
 }
 .app-name-dot {
   color: var(--primary);
@@ -1894,16 +1895,17 @@ body.app-locked #app-shell { display: none; }
   text-align: center;
 }
 .login-logo {
-  width: 88px;
-  height: 88px;
+  width: 200px;
+  height: 200px;
   border-radius: 50%;
   object-fit: cover;
   margin-bottom: 8px;
 }
 .login-title {
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  font-family: 'Tiro Devanagari Hindi', serif;
+  font-size: 32px;
+  font-weight: 400;
+  letter-spacing: 0;
   color: var(--ink);
 }
 .login-dot { color: var(--ink-3); }

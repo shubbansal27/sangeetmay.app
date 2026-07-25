@@ -89,16 +89,25 @@ const YTUpload = (() => {
         reject(new Error('Popup blocked. Please allow popups for this site and try again.'));
         return;
       }
+      let settled = false;
       const closePoll = setInterval(() => {
         if (popup.closed) {
           clearInterval(closePoll);
-          window.removeEventListener('message', onMsg);
-          reject(new Error('Sign-in window was closed. Please try again.'));
+          // Wait 600ms for any in-flight postMessage to arrive before giving up
+          setTimeout(() => {
+            if (!settled) {
+              settled = true;
+              window.removeEventListener('message', onMsg);
+              reject(new Error('Sign-in window was closed. Please try again.'));
+            }
+          }, 600);
         }
       }, 500);
       function onMsg(e) {
         if (e.origin !== window.location.origin) return;
         if (!e.data || e.data.type !== 'sargama_auth_token') return;
+        if (settled) return;
+        settled = true;
         clearInterval(closePoll);
         window.removeEventListener('message', onMsg);
         try { popup.close(); } catch (_) {}

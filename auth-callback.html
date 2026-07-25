@@ -25,8 +25,8 @@
     }
     if (window.opener && !window.opener.closed) {
       try { window.opener.postMessage(msg, window.location.origin); } catch (_) {}
-      // Close the popup regardless of success or error (important for prompt=none silent flow)
-      setTimeout(() => window.close(), 400);
+      // Delay close so the parent window has time to process the postMessage
+      setTimeout(() => window.close(), 800);
     }
   </script>
 </body>
