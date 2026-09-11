@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>domark</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Spectral:ital,wght@0,500;1,500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-bg"></div>
+
+  <div id="login-gate" class="login-gate">
+    <section class="login-card">
+      <p class="eyebrow">domark</p>
+      <h1>Inbox for ideas, not clutter.</h1>
+
+      <p class="login-copy">Sign in with Google to open the dashboard. Inbox can sync Google Tasks and YouTube playlist items (Review Later) through source adapters.</p>
+      <button id="btn-signin" class="primary-btn" type="button">Sign in with Google</button>
+      <p id="login-status" class="login-status hidden"></p>
+    </section>
+  </div>
+
+  <div id="app-shell" class="app-shell hidden">
+    <header class="topbar">
+      <div class="brand-wrap">
+        <img class="brand-logo" src="logo_domark.png" alt="domark logo" />
+        <div>
+          <p class="eyebrow">domark</p>
+          <h1 class="brand-title">Dashboard</h1>
+          <p class="brand-tagline">Turn your bookmarks into progress</p>
+        </div>
+      </div>
+      <div class="user-bar">
+        <div id="user-chip" class="user-chip hidden">
+          <img id="user-avatar" class="user-avatar" src="" alt="" />
+          <div>
+            <p id="user-name" class="user-name"></p>
+            <p id="user-email" class="user-email"></p>
+          </div>
+        </div>
+        <button id="btn-signout" class="ghost-btn hidden" type="button">Sign out</button>
+      </div>
+    </header>
+
+    <div class="shell-grid">
+      <nav class="sidebar" aria-label="Primary">
+        <button class="nav-link active" data-view="inbox" type="button">Inbox</button>
+        <button class="nav-link" data-view="projects" type="button">Projects</button>
+      </nav>
+
+      <main class="workspace">
+        <section id="view-inbox" class="view active">
+          <div class="inbox-shell">
+            <div class="mail-toolbar">
+              <div id="source-tabs" class="source-tabs" aria-label="Inbox source tabs">
+                <button class="source-tab active" data-source="google_tasks" type="button" aria-selected="true">Google Tasks</button>
+                <button class="source-tab" data-source="youtube_review_later" type="button" aria-selected="false">YouTube</button>
+              </div>
+              <div class="toolbar-actions" aria-label="Date filters">
+                <button class="date-filter-btn active" data-filter="all" type="button">All</button>
+                <button class="date-filter-btn" data-filter="1d" type="button">1d</button>
+                <button class="date-filter-btn" data-filter="2d" type="button">2d</button>
+                <button class="date-filter-btn" data-filter="3d" type="button">3d</button>
+                <button class="date-filter-btn" data-filter="7d" type="button">1w</button>
+                <button class="date-filter-btn" data-filter="14d" type="button">2w</button>
+                <button class="date-filter-btn" data-filter="30d" type="button">1m</button>
+                <button class="date-filter-btn" data-filter="60d" type="button">2m</button>
+              </div>
+            </div>
+
+            <section class="panel inbox-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="card-kicker">Inbox</p>
+                  <h3 id="sync-status-title">Waiting for sign-in</h3>
+                </div>
+                <p id="sync-status-copy" class="panel-copy">Pick a source tab to load that list.</p>
+              </div>
+              <div id="inbox-list" class="inbox-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="view-projects" class="view">
+          <section class="panel project-panel">
+            <div id="project-list" class="project-list"></div>
+            <div id="project-detail" class="project-detail hidden"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <div id="project-create-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close-project-modal="true"></div>
+    <div class="modal-panel project-modal-panel" role="dialog" aria-modal="true" aria-labelledby="project-modal-title">
+      <div class="modal-header">
+        <div>
+          <p class="detail-source">Project</p>
+          <h3 id="project-modal-title">Create project</h3>
+        </div>
+        <button id="btn-close-project-modal" class="ghost-btn" type="button">Close</button>
+      </div>
+
+      <form id="project-form" class="project-modal-form">
+        <label class="project-modal-label" for="project-input">Project name</label>
+        <input id="project-input" class="text-input" type="text" placeholder="New project name" maxlength="80" />
+        <div class="modal-actions">
+          <button id="btn-cancel-project-modal" class="ghost-btn" type="button">Cancel</button>
+          <button class="primary-btn" type="submit">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="item-detail-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close-detail="true"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+      <div class="modal-header">
+        <div>
+          <p id="detail-source" class="detail-source">Source</p>
+          <h3 id="detail-title">Item details</h3>
+        </div>
+        <button id="detail-close" class="ghost-btn" type="button">Close</button>
+      </div>
+
+      <div class="detail-body">
+        <div id="detail-meta" class="detail-meta"></div>
+        <div class="detail-summary">
+          <p class="detail-label">Details</p>
+          <p id="detail-summary"></p>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="btn-create-project-from-item" class="primary-btn" type="button">Create project</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="domark-config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

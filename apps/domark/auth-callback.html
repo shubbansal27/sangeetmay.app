@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>domark sign-in</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: sans-serif;
+      background: #f5efe3;
+      color: #1c1611;
+    }
+
+    p {
+      max-width: 32ch;
+      text-align: center;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <p id="status">Completing sign-in…</p>
+  <script>
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const message = { type: 'domark_auth_token' };
+    const token = hash.get('access_token');
+    const error = hash.get('error');
+
+    if (token) {
+      message.token = token;
+      document.getElementById('status').textContent = 'Sign-in complete. This window will close.';
+    } else {
+      message.error = error || 'unknown_error';
+      document.getElementById('status').textContent = 'Sign-in was not completed. You can close this window.';
+    }
+
+    if (window.opener && !window.opener.closed) {
+      try {
+        window.opener.postMessage(message, window.location.origin);
+      } catch (_) {
+      }
+      setTimeout(() => window.close(), 800);
+    }
+  </script>
+</body>
+</html>
