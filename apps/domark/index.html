@@ -7,144 +7,325 @@
   <title>domark</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Spectral:ital,wght@0,500;1,500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Spectral:ital,wght@0,500;1,500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-bg"></div>
+  <!-- Landing / sign-in -->
 
   <div id="login-gate" class="login-gate">
-    <section class="login-card">
-      <p class="eyebrow">domark</p>
-      <h1>Inbox for ideas, not clutter.</h1>
+    <header class="login-topbar">
+      <div class="login-topbar__brand">
+        <img class="login-topbar__logo" src="logo_domark.png" alt="" />
+        <span class="login-brand__word">domark</span>
+      </div>
+      <span class="login-topbar__secure"><span aria-hidden="true">🔒</span> Secured by Google</span>
+    </header>
 
-      <p class="login-copy">Sign in with Google to open the dashboard. Inbox can sync Google Tasks and YouTube playlist items (Review Later) through source adapters.</p>
-      <button id="btn-signin" class="primary-btn" type="button">Sign in with Google</button>
-      <p id="login-status" class="login-status hidden"></p>
-    </section>
+    <main class="login-main">
+      <section class="login-card">
+        <p class="eyebrow">Save less. Do more.</p>
+        <h1>Everything you save, <span class="login-accent">turned into action</span>.</h1>
+        <p class="login-copy">
+          The things you bookmark shouldn't pile up and fade away. domark keeps them in one
+          calm place and helps you actually follow through.
+        </p>
+
+        <ul class="login-features">
+          <li><span class="login-feature__check" aria-hidden="true">✓</span> One calm home for everything you save</li>
+          <li><span class="login-feature__check" aria-hidden="true">✓</span> Turn any idea into a focused workspace</li>
+          <li><span class="login-feature__check" aria-hidden="true">✓</span> Watch your progress build, day by day</li>
+        </ul>
+
+        <button id="btn-signin" class="btn btn--primary btn--lg login-cta" type="button">Continue with Google</button>
+        <p class="login-trust">Private by design — your work stays in your own Google Drive.</p>
+        <p id="login-status" class="login-status hidden"></p>
+      </section>
+    </main>
+
+    <footer class="login-footer">
+      <span>© 2026 domark</span>
+      <span>Private by design · Your data never leaves your Google account</span>
+    </footer>
   </div>
 
+  <!-- App shell -->
   <div id="app-shell" class="app-shell hidden">
     <header class="topbar">
-      <div class="brand-wrap">
-        <img class="brand-logo" src="logo_domark.png" alt="domark logo" />
-        <div>
-          <p class="eyebrow">domark</p>
-          <h1 class="brand-title">Dashboard</h1>
-          <p class="brand-tagline">Turn your bookmarks into progress</p>
-        </div>
+      <div class="topbar__brand">
+        <img class="topbar__logo" src="logo_domark.png" alt="" />
+        <span class="topbar__word">domark</span>
       </div>
-      <div class="user-bar">
-        <div id="user-chip" class="user-chip hidden">
-          <img id="user-avatar" class="user-avatar" src="" alt="" />
-          <div>
-            <p id="user-name" class="user-name"></p>
-            <p id="user-email" class="user-email"></p>
-          </div>
+
+      <div class="user-menu" id="user-menu">
+        <button class="user-menu__toggle" id="user-menu-toggle" type="button" aria-haspopup="true">
+          <img id="user-avatar" class="avatar" src="" alt="" />
+          <span class="user-menu__name" id="user-name"></span>
+        </button>
+        <div class="user-menu__dropdown">
+          <p class="user-menu__email" id="user-email"></p>
+          <button id="btn-signout" class="btn btn--ghost btn--block" type="button">Sign out</button>
         </div>
-        <button id="btn-signout" class="ghost-btn hidden" type="button">Sign out</button>
       </div>
     </header>
 
-    <div class="shell-grid">
+    <div class="shell">
       <nav class="sidebar" aria-label="Primary">
-        <button class="nav-link active" data-view="inbox" type="button">Inbox</button>
-        <button class="nav-link" data-view="projects" type="button">Projects</button>
+        <button class="nav-link is-active" data-view="inbox" type="button">
+          <span class="nav-link__icon" aria-hidden="true">✉</span>
+          <span>Inbox</span>
+        </button>
+        <button class="nav-link" data-view="projects" type="button">
+          <span class="nav-link__icon" aria-hidden="true">▤</span>
+          <span>Projects</span>
+        </button>
+        <button class="nav-link" data-view="insights" type="button">
+          <span class="nav-link__icon" aria-hidden="true">📊</span>
+          <span>Insights</span>
+        </button>
       </nav>
 
-      <main class="workspace">
-        <section id="view-inbox" class="view active">
-          <div class="inbox-shell">
-            <div class="mail-toolbar">
-              <div id="source-tabs" class="source-tabs" aria-label="Inbox source tabs">
-                <button class="source-tab active" data-source="google_tasks" type="button" aria-selected="true">Google Tasks</button>
-                <button class="source-tab" data-source="youtube_review_later" type="button" aria-selected="false">YouTube</button>
-              </div>
-              <div class="toolbar-actions" aria-label="Date filters">
-                <button class="date-filter-btn active" data-filter="all" type="button">All</button>
-                <button class="date-filter-btn" data-filter="1d" type="button">1d</button>
-                <button class="date-filter-btn" data-filter="2d" type="button">2d</button>
-                <button class="date-filter-btn" data-filter="3d" type="button">3d</button>
-                <button class="date-filter-btn" data-filter="7d" type="button">1w</button>
-                <button class="date-filter-btn" data-filter="14d" type="button">2w</button>
-                <button class="date-filter-btn" data-filter="30d" type="button">1m</button>
-                <button class="date-filter-btn" data-filter="60d" type="button">2m</button>
-              </div>
+      <main class="workspace-area">
+        <!-- Inbox view -->
+        <section id="view-inbox" class="view is-active">
+          <div class="view-toolbar">
+            <div class="segmented" role="tablist" aria-label="Inbox source">
+              <button class="source-tab is-active" data-source="google_tasks" type="button" role="tab" aria-selected="true">Google Tasks<span class="source-tab__count" data-source-count></span></button>
+              <button class="source-tab" data-source="youtube_review_later" type="button" role="tab" aria-selected="false">YouTube<span class="source-tab__count" data-source-count></span></button>
             </div>
-
-            <section class="panel inbox-panel">
-              <div class="panel-head">
-                <div>
-                  <p class="card-kicker">Inbox</p>
-                  <h3 id="sync-status-title">Waiting for sign-in</h3>
-                </div>
-                <p id="sync-status-copy" class="panel-copy">Pick a source tab to load that list.</p>
-              </div>
-              <div id="inbox-list" class="inbox-list"></div>
-            </section>
+            <div class="view-toolbar__right">
+              <span id="inbox-synced" class="inbox-synced muted"></span>
+              <button id="btn-inbox-refresh" class="btn btn--soft btn--sm" type="button" aria-label="Refresh inbox">↻</button>
+              <label class="field-inline">
+                <span class="field-inline__label">Range</span>
+                <select id="date-filter" class="select">
+                  <option value="all">All time</option>
+                  <option value="1d">Today</option>
+                  <option value="7d">This week</option>
+                  <option value="30d">This month</option>
+                  <option value="90d">Last 3 months</option>
+                </select>
+              </label>
+            </div>
           </div>
+
+          <section class="panel">
+            <div class="panel__head">
+              <div>
+                <p class="kicker">Inbox</p>
+                <h2 id="inbox-title">Waiting for sign-in</h2>
+              </div>
+              <p id="inbox-copy" class="panel__copy">Pick a source to load that list.</p>
+            </div>
+            <div id="inbox-list" class="inbox-list"></div>
+          </section>
         </section>
 
+        <!-- Projects view -->
         <section id="view-projects" class="view">
-          <section class="panel project-panel">
-            <div id="project-list" class="project-list"></div>
-            <div id="project-detail" class="project-detail hidden"></div>
+          <nav id="breadcrumbs" class="breadcrumbs hidden" aria-label="Breadcrumb"></nav>
+          <div id="project-list" class="project-list"></div>
+          <div id="project-workspace" class="project-workspace hidden"></div>
+        </section>
+
+        <!-- Insights view -->
+
+        <section id="view-insights" class="view">
+          <section class="panel">
+            <div class="panel__head">
+              <div>
+                <p class="kicker">Insights</p>
+                <h2>Your momentum</h2>
+              </div>
+              <p class="panel__copy">Track what you save and what you finish.</p>
+            </div>
+            <div id="insights-body" class="insights-body"></div>
           </section>
         </section>
       </main>
     </div>
+
+    <nav class="bottom-nav" aria-label="Primary mobile">
+      <button class="nav-link is-active" data-view="inbox" type="button">
+        <span class="nav-link__icon" aria-hidden="true">✉</span><span>Inbox</span>
+      </button>
+      <button class="nav-link" data-view="projects" type="button">
+        <span class="nav-link__icon" aria-hidden="true">▤</span><span>Projects</span>
+      </button>
+      <button class="nav-link" data-view="insights" type="button">
+        <span class="nav-link__icon" aria-hidden="true">📊</span><span>Insights</span>
+      </button>
+    </nav>
   </div>
 
-  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <div id="project-create-modal" class="modal hidden" aria-hidden="true">
-    <div class="modal-backdrop" data-close-project-modal="true"></div>
-    <div class="modal-panel project-modal-panel" role="dialog" aria-modal="true" aria-labelledby="project-modal-title">
-      <div class="modal-header">
+  <!-- Blocking busy overlay -->
+  <div id="busy-overlay" class="busy-overlay" aria-hidden="true">
+    <div class="busy-overlay__card" role="alertdialog" aria-live="assertive" aria-busy="true">
+      <span class="spinner" aria-hidden="true"></span>
+      <p id="busy-message" class="busy-overlay__message">Working…</p>
+    </div>
+  </div>
+
+  <!-- Create project modal -->
+  <div id="project-modal" class="modal" aria-hidden="true">
+    <div class="modal__backdrop" data-close-modal="true"></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="project-modal-title">
+      <div class="modal__head">
         <div>
-          <p class="detail-source">Project</p>
+          <p class="kicker">New project</p>
           <h3 id="project-modal-title">Create project</h3>
         </div>
-        <button id="btn-close-project-modal" class="ghost-btn" type="button">Close</button>
+        <button id="btn-close-modal" class="icon-btn" type="button" aria-label="Close">×</button>
       </div>
 
-      <form id="project-form" class="project-modal-form">
-        <label class="project-modal-label" for="project-input">Project name</label>
-        <input id="project-input" class="text-input" type="text" placeholder="New project name" maxlength="80" />
-        <div class="modal-actions">
-          <button id="btn-cancel-project-modal" class="ghost-btn" type="button">Cancel</button>
-          <button class="primary-btn" type="submit">Create</button>
+      <form id="project-form" class="form">
+        <div class="form-grid">
+          <label class="field">
+            <span>Project name</span>
+            <input id="project-name" class="input" type="text" maxlength="80" placeholder="e.g. Rate limiter design" />
+          </label>
+          <label class="field">
+            <span>Category</span>
+            <select id="project-category" class="select">
+              <option value="System design">System design</option>
+              <option value="Algorithms">Algorithms</option>
+              <option value="AI/ML">AI/ML</option>
+              <option value="Music">Music</option>
+              <option value="Others">Others</option>
+            </select>
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Description</span>
+          <textarea id="project-description" class="input" rows="3" placeholder="What is this project about?"></textarea>
+        </label>
+
+        <div class="field-head">
+          <span>Tags</span>
+          <button id="btn-add-tag" class="btn btn--soft btn--sm" type="button">+ Add tag</button>
+        </div>
+        <div id="project-tags" class="tags-editor"></div>
+
+        <div id="project-preview" class="preview hidden">
+          <p class="kicker">From inbox item</p>
+          <div id="project-preview-body" class="preview__grid"></div>
+        </div>
+
+        <div class="modal__actions">
+          <button id="btn-cancel-modal" class="btn btn--ghost" type="button">Cancel</button>
+          <button class="btn btn--primary" type="submit">Create project</button>
         </div>
       </form>
     </div>
   </div>
 
-  <div id="item-detail-modal" class="modal hidden" aria-hidden="true">
-    <div class="modal-backdrop" data-close-detail="true"></div>
-    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="detail-title">
-      <div class="modal-header">
-        <div>
-          <p id="detail-source" class="detail-source">Source</p>
-          <h3 id="detail-title">Item details</h3>
-        </div>
-        <button id="detail-close" class="ghost-btn" type="button">Close</button>
+  <!-- Artifact name modal -->
+  <div id="artifact-modal" class="modal" aria-hidden="true">
+    <div class="modal__backdrop" data-close-modal="true"></div>
+    <div class="modal__panel modal__panel--sm" role="dialog" aria-modal="true" aria-labelledby="artifact-modal-title">
+      <div class="modal__head">
+        <h3 id="artifact-modal-title">Name this file</h3>
+        <button id="btn-artifact-close" class="icon-btn" type="button" aria-label="Close">×</button>
       </div>
+      <form id="artifact-form" class="form">
+        <label class="field hidden" id="artifact-type-field">
+          <span>Type</span>
 
-      <div class="detail-body">
-        <div id="detail-meta" class="detail-meta"></div>
-        <div class="detail-summary">
-          <p class="detail-label">Details</p>
-          <p id="detail-summary"></p>
+          <select id="artifact-type" class="input">
+            <option value="gdoc">Google Doc</option>
+            <option value="gsheet">Google Sheet</option>
+            <option value="gslides">Google Slides</option>
+            <option value="gdrawing">Google Drawing</option>
+            <option value="drawio">Design board (draw.io)</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>File name</span>
+          <input id="artifact-name" class="input" type="text" maxlength="80" />
+        </label>
+        <div class="modal__actions">
+          <button id="btn-artifact-cancel" class="btn btn--ghost" type="button">Cancel</button>
+          <button class="btn btn--primary" type="submit">Create &amp; open</button>
         </div>
-      </div>
+      </form>
+    </div>
+  </div>
 
-      <div class="modal-actions">
-        <button id="btn-create-project-from-item" class="primary-btn" type="button">Create project</button>
+  <div id="link-modal" class="modal" aria-hidden="true">
+    <div class="modal__backdrop" data-close-modal="true"></div>
+    <div class="modal__panel modal__panel--sm" role="dialog" aria-modal="true" aria-labelledby="link-modal-title">
+      <div class="modal__head">
+        <h3 id="link-modal-title">Add a link</h3>
+        <button id="btn-link-close" class="icon-btn" type="button" aria-label="Close">×</button>
+      </div>
+      <form id="link-form" class="form">
+        <label class="field">
+          <span>URL</span>
+          <input id="link-url" class="input" type="url" placeholder="https://example.com" required />
+        </label>
+        <label class="field">
+          <span>Title <small class="muted">(optional)</small></span>
+          <input id="link-title" class="input" type="text" maxlength="120" placeholder="Link title" />
+        </label>
+        <div class="modal__actions">
+          <button id="btn-link-cancel" class="btn btn--ghost" type="button">Cancel</button>
+          <button class="btn btn--primary" type="submit">Add link</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="recorder-modal" class="modal" aria-hidden="true">
+    <div class="modal__backdrop" data-close-modal="true"></div>
+    <div class="modal__panel modal__panel--wide" role="dialog" aria-modal="true" aria-labelledby="recorder-title">
+      <div class="modal__head">
+        <h3 id="recorder-title">Record a video</h3>
+        <button id="btn-rec-close" class="icon-btn" type="button" aria-label="Close">×</button>
+      </div>
+      <div class="recorder">
+
+        <div class="segmented recorder__modes" role="group" aria-label="Recording source">
+          <button id="btn-rec-mode-camera" class="source-tab is-active" type="button" data-rec-mode="camera">📷 Camera</button>
+          <button id="btn-rec-mode-screen" class="source-tab" type="button" data-rec-mode="screen">🖥 Screen</button>
+        </div>
+        <div class="recorder__stage">
+          <video id="rec-preview" class="recorder__video" playsinline muted></video>
+          <span id="rec-indicator" class="recorder__live"><span class="recorder__dot"></span>REC</span>
+          <span id="rec-timer" class="recorder__timer">0:00</span>
+        </div>
+        <div class="recorder__controls">
+          <button id="btn-rec-start" class="btn btn--primary" type="button" disabled>● Record</button>
+          <button id="btn-rec-stop" class="btn btn--soft" type="button" disabled>■ Stop</button>
+        </div>
+        <form id="recorder-form" class="form" onsubmit="return false">
+          <label class="field">
+            <span>Title</span>
+            <input id="rec-title" class="input" type="text" maxlength="100" placeholder="Recording title" />
+          </label>
+          <div class="field">
+            <span>Privacy</span>
+            <div class="radio-row">
+              <label><input type="radio" name="rec-privacy" value="unlisted" checked /> Unlisted</label>
+              <label><input type="radio" name="rec-privacy" value="private" /> Private</label>
+            </div>
+          </div>
+          <div id="rec-progress-wrap" class="progress-bar hidden">
+            <span id="rec-progress-fill" class="progress-bar__fill" style="width: 0%"></span>
+          </div>
+          <p id="rec-status" class="recorder__status"></p>
+          <div class="modal__actions">
+            <button id="btn-rec-cancel" class="btn btn--ghost" type="button">Cancel</button>
+            <button id="btn-rec-upload" class="btn btn--primary" type="button" disabled>Upload to YouTube</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
 
   <script src="domark-config.js"></script>
-  <script src="app.js"></script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
