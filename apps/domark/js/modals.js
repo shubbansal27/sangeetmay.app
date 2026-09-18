@@ -1,10 +1,11 @@
 // Modal dialogs: create-project form and the artifact naming prompt.
 
 import { state } from './store.js';
-import { PROJECT_CATEGORIES, ARTIFACT_TYPES } from './config.js';
+import { ARTIFACT_TYPES } from './config.js';
 import { byId } from './utils.js';
 import { showToast } from './feedback.js';
 import { createProjectFromItem } from './drive.js';
+import { allCategories, categoryOptionsHtml } from './categories.js';
 import { itemMeta, metaFieldHtml } from './inbox.js';
 import { render } from './render.js';
 
@@ -80,8 +81,11 @@ export function openProjectModal(item = null, defaults = {}) {
   if (name) name.value = item ? String(item.title || '').trim() : '';
   if (description) description.value = '';
   if (category) {
-    const preferred = defaults.category && PROJECT_CATEGORIES.includes(defaults.category) ? defaults.category : PROJECT_CATEGORIES[0];
+    const known = allCategories();
+    const preferred = defaults.category && known.includes(defaults.category) ? defaults.category : known[0];
+    category.innerHTML = categoryOptionsHtml(preferred);
     category.value = preferred;
+    category.dataset.current = preferred;
   }
   if (tags) {
     tags.innerHTML = '';

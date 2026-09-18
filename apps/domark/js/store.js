@@ -1,11 +1,13 @@
 // Central application state and its persistence to localStorage.
 
 import { STORAGE_KEYS } from './config.js';
+import { profileKey } from './profiles.js';
 
 export const state = {
   activeView: 'inbox',
   activeSource: 'google_tasks',
   activeDateFilter: 'all',
+  activePlaylist: 'all',
   profile: null,
   token: null,
   projects: [],
@@ -34,12 +36,12 @@ function readJson(key, fallback) {
 }
 
 export function loadProjects() {
-  const saved = readJson(STORAGE_KEYS.projects, []);
+  const saved = readJson(profileKey(STORAGE_KEYS.projects), []);
   return Array.isArray(saved) ? saved : [];
 }
 
 export function saveProjects() {
-  localStorage.setItem(STORAGE_KEYS.projects, JSON.stringify(state.projects));
+  localStorage.setItem(profileKey(STORAGE_KEYS.projects), JSON.stringify(state.projects));
 }
 
 export function restoreProfile() {

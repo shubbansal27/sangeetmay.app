@@ -3,6 +3,7 @@
 import { state } from './store.js';
 import { byId, escapeHtml, formatRelative } from './utils.js';
 import { activeSource, currentSourceState, sourceState } from './sources.js';
+import { isSourceEnabled, enabledSourceIds } from './settings.js';
 
 export function itemMeta(item) {
   if (Array.isArray(item?.meta) && item.meta.length) {
@@ -52,8 +53,13 @@ export function matchesDateFilter(item, filter) {
 }
 
 export function renderSourceControls() {
+  const enabled = enabledSourceIds();
+  if (enabled.length && !enabled.includes(state.activeSource)) {
+    state.activeSource = enabled[0];
+  }
   document.querySelectorAll('.source-tab').forEach((button) => {
     const id = button.dataset.source;
+    button.classList.toggle('hidden', !isSourceEnabled(id));
     const isActive = id === state.activeSource;
     button.classList.toggle('is-active', isActive);
     button.setAttribute('aria-selected', String(isActive));
@@ -128,12 +134,30 @@ function itemRow(item) {
   );
 }
 
+// Populate the playlist quick-filter from the YouTube items currently loaded.
+function renderPlaylistFilter(slice, isYouTube) {
+  const wrap = byId('playlist-filter-wrap');
+  const select = byId('playlist-filter');
+  if (!wrap || !select) return;
+  wrap.hidden = !isYouTube;
+  if (!isYouTube) return;
+  const names = [...new Set(slice.items.map((item) => item.playlist).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  if (state.activePlaylist !== 'all' && !names.includes(state.activePlaylist)) state.activePlaylist = 'all';
+  select.innerHTML =
+    '<option value="all">All playlists</option>' +
+    names
+      .map((name) => '<option value="' + escapeHtml(name) + '"' + (name === state.activePlaylist ? ' selected' : '') + '>' + escapeHtml(name) + '</option>')
+      .join('');
+  select.value = state.activePlaylist;
+}
+
 export function renderInbox() {
   const title = byId('inbox-title');
   const copy = byId('inbox-copy');
   const list = byId('inbox-list');
   const source = activeSource();
   const slice = currentSourceState();
+  const isYouTube = Boolean(state.profile) && source.id === 'youtube_review_later';
 
   if (title) title.textContent = state.profile ? source.label : 'Waiting for sign-in';
   if (copy) {
@@ -145,6 +169,7 @@ export function renderInbox() {
   if (synced) synced.textContent = state.profile ? syncedLabel(slice) : '';
   const refreshBtn = byId('btn-inbox-refresh');
   if (refreshBtn) refreshBtn.disabled = !state.profile || slice.status === 'loading' || slice.status === 'refreshing';
+  renderPlaylistFilter(slice, isYouTube);
 
   if (!list) return;
 
@@ -161,7 +186,9 @@ export function renderInbox() {
     return;
   }
 
-  const items = slice.items.filter((item) => matchesDateFilter(item, state.activeDateFilter));
+  const items = slice.items
+    .filter((item) => matchesDateFilter(item, state.activeDateFilter))
+    .filter((item) => !isYouTube || state.activePlaylist === 'all' || item.playlist === state.activePlaylist);
   if (items.length === 0) {
     list.innerHTML = stateCard('◇', 'Nothing here yet', 'No items in this window. Try a wider date range or another source.');
     return;

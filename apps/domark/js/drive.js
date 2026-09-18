@@ -2,6 +2,7 @@
 
 import { STORAGE_KEYS, DRIVE, ARTIFACT_TYPES } from './config.js';
 import { state, saveProjects } from './store.js';
+import { getActiveProfile, profileKey } from './profiles.js';
 import { uid, slugify } from './utils.js';
 import { authScope, openAuthPopup } from './auth.js';
 
@@ -113,16 +114,26 @@ async function folderExists(id) {
 }
 
 async function ensureStructure() {
+  const profile = getActiveProfile();
+  const isDefault = profile === DRIVE.defaultProfile;
   let rootFolderId = localStorage.getItem(STORAGE_KEYS.driveRoot);
-  let projectsFolderId = localStorage.getItem(STORAGE_KEYS.driveProjects);
+  let profileFolderId = isDefault ? rootFolderId : localStorage.getItem(profileKey(STORAGE_KEYS.driveProfile));
+  let projectsFolderId = localStorage.getItem(profileKey(STORAGE_KEYS.driveProjects));
   // Once per session, verify cached ids so we never read/write into folders deleted in Drive.
   if (!structureVerified && state.token) {
     const rootOk = rootFolderId ? await folderExists(rootFolderId) : false;
     if (!rootOk) {
       rootFolderId = null;
+      profileFolderId = null;
       projectsFolderId = null;
-    } else if (projectsFolderId && !(await folderExists(projectsFolderId))) {
-      projectsFolderId = null;
+    } else {
+      if (!isDefault && profileFolderId && !(await folderExists(profileFolderId))) {
+        profileFolderId = null;
+        projectsFolderId = null;
+      }
+      if (projectsFolderId && !(await folderExists(projectsFolderId))) {
+        projectsFolderId = null;
+      }
     }
     structureVerified = true;
   }
@@ -130,11 +141,97 @@ async function ensureStructure() {
     rootFolderId = await ensureFolder(DRIVE.rootFolder);
     localStorage.setItem(STORAGE_KEYS.driveRoot, rootFolderId);
   }
-  if (!projectsFolderId) {
-    projectsFolderId = await ensureFolder(DRIVE.projectsFolder, rootFolderId);
-    localStorage.setItem(STORAGE_KEYS.driveProjects, projectsFolderId);
+  if (isDefault) {
+    profileFolderId = rootFolderId;
+  } else if (!profileFolderId) {
+    profileFolderId = await ensureFolder(profile, rootFolderId);
+    localStorage.setItem(profileKey(STORAGE_KEYS.driveProfile), profileFolderId);
   }
-  return { rootFolderId, projectsFolderId };
+  if (!projectsFolderId) {
+    projectsFolderId = await ensureFolder(DRIVE.projectsFolder, profileFolderId);
+    localStorage.setItem(profileKey(STORAGE_KEYS.driveProjects), projectsFolderId);
+  }
+  return { rootFolderId: profileFolderId, projectsFolderId };
+}
+
+// Drop in-memory caches so the next Drive access re-resolves folders for the newly active profile.
+export function resetProfileCaches() {
+  insightsCache = null;
+  structureVerified = false;
+}
+
+// The profiles list lives at the shared domark root (not inside a profile folder).
+async function domarkRootId() {
+  await ensureStructure();
+  return localStorage.getItem(STORAGE_KEYS.driveRoot);
+}
+
+export async function loadProfilesList() {
+  const rootId = await domarkRootId();
+  if (!rootId) return null;
+  const existing = await findFile(DRIVE.profilesFile, rootId);
+  if (!existing) return null;
+  const data = await readJsonFile(existing.id);
+  return data && Array.isArray(data.profiles) ? data.profiles : null;
+}
+
+export async function saveProfilesList(profiles) {
+  const rootId = await domarkRootId();
+  const existing = await findFile(DRIVE.profilesFile, rootId);
+  await writeJsonFile({
+    name: DRIVE.profilesFile,
+    parentId: rootId,
+    existingId: existing ? existing.id : null,
+    data: { version: 1, profiles },
+    errorLabel: 'Could not save profiles to Google Drive.',
+  });
+}
+
+// Per-profile settings.json lives in the active profile folder.
+export async function loadSettingsFile() {
+  const { rootFolderId } = await ensureStructure();
+  const existing = await findFile(DRIVE.settingsFile, rootFolderId);
+  if (!existing) return null;
+  return readJsonFile(existing.id);
+}
+
+export async function saveSettingsFile(data) {
+  const { rootFolderId } = await ensureStructure();
+  const existing = await findFile(DRIVE.settingsFile, rootFolderId);
+  await writeJsonFile({
+    name: DRIVE.settingsFile,
+    parentId: rootFolderId,
+    existingId: existing ? existing.id : null,
+    data,
+    errorLabel: 'Could not save settings to Google Drive.',
+  });
+}
+
+async function findFolder(name, parentId) {
+  const clauses = [
+    "name='" + name.replace(/'/g, "\\'") + "'",
+    "mimeType='application/vnd.google-apps.folder'",
+    "'" + parentId + "' in parents",
+    'trashed=false',
+  ];
+  const res = await driveFetch(DRIVE_FILES + '?q=' + driveQuery(clauses) + '&spaces=drive&fields=files(id,name)');
+  if (!res.ok) return null;
+  const data = await res.json().catch(() => null);
+  return data && data.files && data.files[0] ? data.files[0] : null;
+}
+
+// Trash a named profile's Drive folder (never the shared default root).
+export async function deleteProfileFolder(name) {
+  if (!state.token || !name || name === DRIVE.defaultProfile) return;
+  const rootId = await domarkRootId();
+  if (!rootId) return;
+  const folder = await findFolder(name, rootId);
+  if (!folder) return;
+  await driveFetch(DRIVE_FILES + '/' + folder.id, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trashed: true }),
+  });
 }
 
 async function loadProjectIndex() {
@@ -442,20 +539,20 @@ function emptyInsights() {
 
 async function ensureInsightsFolder() {
   const { rootFolderId } = await ensureStructure();
-  let id = localStorage.getItem(STORAGE_KEYS.driveInsights);
+  let id = localStorage.getItem(profileKey(STORAGE_KEYS.driveInsights));
   if (id && !(await folderExists(id))) {
     // Insights folder was deleted in Drive -> drop the stale local snapshot so no phantom counts remain.
     id = null;
     insightsCache = null;
     try {
-      localStorage.removeItem(STORAGE_KEYS.insightsCache);
+      localStorage.removeItem(profileKey(STORAGE_KEYS.insightsCache));
     } catch {
       /* ignore */
     }
   }
   if (!id) {
     id = await ensureFolder(DRIVE.insightsFolder, rootFolderId);
-    localStorage.setItem(STORAGE_KEYS.driveInsights, id);
+    localStorage.setItem(profileKey(STORAGE_KEYS.driveInsights), id);
   }
   return id;
 }
@@ -463,7 +560,7 @@ async function ensureInsightsFolder() {
 async function loadInsightsState() {
   if (insightsCache) return insightsCache;
   try {
-    const local = JSON.parse(localStorage.getItem(STORAGE_KEYS.insightsCache) || 'null');
+    const local = JSON.parse(localStorage.getItem(profileKey(STORAGE_KEYS.insightsCache)) || 'null');
     if (local && local.version) insightsCache = local;
   } catch {
     /* ignore corrupt local cache */
@@ -483,7 +580,7 @@ async function loadInsightsState() {
 async function saveInsightsState(data) {
   insightsCache = data;
   try {
-    localStorage.setItem(STORAGE_KEYS.insightsCache, JSON.stringify(data));
+    localStorage.setItem(profileKey(STORAGE_KEYS.insightsCache), JSON.stringify(data));
   } catch {
     /* ignore quota errors */
   }
