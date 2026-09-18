@@ -5,6 +5,7 @@ import { state } from './store.js';
 import { formatRelative } from './utils.js';
 import { renderInbox } from './inbox.js';
 import { recordBookmarksSeen } from './drive.js';
+import { isSourceEnabled, getYouTubePlaylistIds } from './settings.js';
 
 const TASKS_API = 'https://tasks.googleapis.com/tasks/v1';
 
@@ -118,7 +119,7 @@ async function findReviewLaterPlaylist(headers) {
   return null;
 }
 
-function mapPlaylistItem(item) {
+function mapPlaylistItem(item, playlistTitle) {
   const snippet = item?.snippet || {};
   const videoId = item?.contentDetails?.videoId || snippet?.resourceId?.videoId || '';
   const title = snippet.title || 'Untitled video';
@@ -127,18 +128,21 @@ function mapPlaylistItem(item) {
   const descSnippet = description.length > 140 ? description.slice(0, 137) + '…' : description;
   const addedAt = snippet.publishedAt || item?.contentDetails?.videoPublishedAt || null;
   const watchUrl = videoId ? 'https://www.youtube.com/watch?v=' + encodeURIComponent(videoId) : '';
+  const listName = playlistTitle || 'YouTube';
 
   const meta = [
     { label: 'Title', value: title },
     { label: 'Added', value: addedAt ? formatRelative(addedAt) : 'Not set' },
+    { label: 'Playlist', value: listName },
     { label: 'Channel', value: channel },
     { label: 'Description', value: description || 'No description' },
   ];
   if (watchUrl) meta.push({ label: 'Open', value: 'Watch on YouTube', href: watchUrl });
 
   return {
-    source: 'YouTube: ' + YOUTUBE_PLAYLIST_TITLE,
-    tag: channel,
+    source: 'YouTube',
+    tag: listName,
+    playlist: listName,
     title,
     body: descSnippet || channel,
     addedAt,
@@ -148,41 +152,94 @@ function mapPlaylistItem(item) {
   };
 }
 
-async function fetchYouTubeReviewLater(token) {
-  const headers = { Authorization: 'Bearer ' + token };
-  const playlistId = await findReviewLaterPlaylist(headers);
-  if (!playlistId) {
-    throw new Error('Could not find a playlist named "' + YOUTUBE_PLAYLIST_TITLE + '" in this account.');
-  }
-
-  const items = [];
+async function fetchPlaylistItems(headers, playlistId, playlistTitle) {
+  const raw = [];
   let pageToken = null;
   do {
-    const params = new URLSearchParams({
-      part: 'snippet,contentDetails',
-      playlistId,
-      maxResults: '50',
-    });
+    const params = new URLSearchParams({ part: 'snippet,contentDetails', playlistId, maxResults: '50' });
     if (pageToken) params.set('pageToken', pageToken);
     const response = await fetch(YOUTUBE_API + '/playlistItems?' + params.toString(), { headers });
     if (!response.ok) {
-      if (items.length) break;
+      if (raw.length) break;
       throw new Error('Could not read items from your YouTube playlist.');
     }
     const data = await response.json();
-    items.push(...(Array.isArray(data.items) ? data.items : []));
+    raw.push(...(Array.isArray(data.items) ? data.items : []));
     pageToken = data.nextPageToken || null;
-  } while (pageToken && items.length < 100);
+  } while (pageToken && raw.length < 100);
+  return raw.map((item) => mapPlaylistItem(item, playlistTitle));
+}
 
+// List the account's playlists for the Settings picker.
+export async function fetchYouTubePlaylists(token) {
+  const headers = { Authorization: 'Bearer ' + token };
+  const out = [];
+  let pageToken = null;
+  do {
+    const params = new URLSearchParams({ part: 'id,snippet,contentDetails', mine: 'true', maxResults: '50' });
+    if (pageToken) params.set('pageToken', pageToken);
+    const response = await fetch(YOUTUBE_API + '/playlists?' + params.toString(), { headers });
+    if (!response.ok) throw new Error('Could not read your YouTube playlists. Please sign in again and retry.');
+    const data = await response.json();
+    (Array.isArray(data.items) ? data.items : []).forEach((p) => {
+      out.push({ id: p.id, title: String(p?.snippet?.title || 'Untitled playlist'), count: p?.contentDetails?.itemCount ?? null });
+    });
+    pageToken = data.nextPageToken || null;
+  } while (pageToken);
+  return out;
+}
+
+// Consolidate items from all selected playlists (defaults to the "Review Later" playlist).
+async function fetchYouTube(token) {
+  const headers = { Authorization: 'Bearer ' + token };
+  let ids = getYouTubePlaylistIds();
+  const titleById = new Map();
+  let playlists = [];
+  try {
+    playlists = await fetchYouTubePlaylists(token);
+  } catch {
+    playlists = [];
+  }
+  playlists.forEach((pl) => titleById.set(pl.id, pl.title));
+  if (!ids.length) {
+    const preset = playlists.find((pl) => pl.title.trim().toLowerCase() === YOUTUBE_PLAYLIST_TITLE.toLowerCase());
+    if (preset) {
+      ids = [preset.id];
+    } else {
+      const legacy = await findReviewLaterPlaylist(headers);
+      if (legacy) {
+        ids = [legacy];
+        titleById.set(legacy, YOUTUBE_PLAYLIST_TITLE);
+      }
+    }
+  }
+  if (!ids.length) {
+    throw new Error('No YouTube playlist selected. Pick one in Settings, or create a "' + YOUTUBE_PLAYLIST_TITLE + '" playlist.');
+  }
+  const collected = [];
+  for (const playlistId of ids) {
+    const title = titleById.get(playlistId) || 'YouTube';
+    try {
+      collected.push(...(await fetchPlaylistItems(headers, playlistId, title)));
+    } catch {
+      /* skip a failing playlist, keep the rest */
+    }
+  }
+  const seen = new Set();
+  const items = [];
+  collected.forEach((item) => {
+    if (seen.has(item.refId)) return;
+    seen.add(item.refId);
+    items.push(item);
+  });
   return items
-    .map(mapPlaylistItem)
     .sort((a, b) => new Date(b.addedAt || 0).getTime() - new Date(a.addedAt || 0).getTime())
     .slice(0, 100);
 }
 
 const LOADERS = {
   google_tasks: fetchGoogleTasks,
-  youtube_review_later: fetchYouTubeReviewLater,
+  youtube_review_later: fetchYouTube,
 };
 
 export function activeSource() {
@@ -232,9 +289,11 @@ async function loadSource(sourceId, { force = false } = {}) {
   renderInbox();
 }
 
-// Fetch every source in parallel (used on sign-in / boot).
+// Fetch every enabled source in parallel (used on sign-in / boot).
 export async function refreshAllSources(options = {}) {
-  await Promise.all(SOURCES.map((source) => loadSource(source.id, options)));
+  await Promise.all(
+    SOURCES.filter((source) => isSourceEnabled(source.id)).map((source) => loadSource(source.id, options))
+  );
 }
 
 export async function refreshActiveSource(options = {}) {

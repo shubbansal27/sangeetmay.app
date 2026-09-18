@@ -11,19 +11,28 @@ export const STORAGE_KEYS = {
   profile: 'domark_google_profile',
   projects: 'domark_projects',
   driveRoot: 'domark_drive_root_id',
+  driveProfile: 'domark_drive_profile_id',
   driveProjects: 'domark_drive_projects_id',
   driveInsights: 'domark_drive_insights_id',
   insightsCache: 'domark_insights_state',
+  activeProfile: 'domark_active_profile',
+  profiles: 'domark_profiles',
+  announcementsSeen: 'domark_announcements_seen',
+  customCategories: 'domark_custom_categories',
+  settings: 'domark_settings',
 };
 
 export const DRIVE = {
   rootFolder: 'domark',
+  defaultProfile: 'default',
+  profilesFile: 'profiles.json',
   projectsFolder: 'projects',
   indexFile: 'projects.json',
   projectFile: 'project.json',
   artifactsFile: 'artifacts.json',
   insightsFolder: 'insights',
   insightsState: 'state.json',
+  settingsFile: 'settings.json',
 };
 
 export const PROJECT_CATEGORIES = ['System design', 'Algorithms', 'AI/ML', 'Music', 'Others'];

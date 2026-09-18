@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>sangeetmay</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Tiro+Devanagari+Hindi:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="quill.snow.css" />
+</head>
+<body class="app-locked">
+
+  <!-- Login gate — shown until user signs in with Google -->
+  <div id="login-gate" class="login-gate">
+    <div class="login-card">
+      <img src="logo1.png" class="login-logo" alt="sangeetmay" />
+      <h1 class="login-title">संगीतमय</h1>
+      <p class="login-sub">Every Day Begins with Riyaaz.</p>
+      <button id="btn-gate-signin" class="btn-gate-signin" type="button">Sign in with Google</button>
+      <span id="login-gate-hint" class="login-gate-hint hidden"></span>
+      <span id="login-gate-error" class="login-gate-error hidden"></span>
+    </div>
+  </div>
+
+  <div id="app-shell">
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <button id="btn-toggle-nav" class="icon-btn" type="button" aria-label="Toggle projects">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <rect y="2" width="16" height="1.8" rx="0.9" fill="currentColor"/>
+        <rect y="7.1" width="16" height="1.8" rx="0.9" fill="currentColor"/>
+        <rect y="12.2" width="16" height="1.8" rx="0.9" fill="currentColor"/>
+      </svg>
+    </button>
+    <a href="#" id="btn-home" class="app-brand" title="sangeetmay">
+      <img src="logo1.png" class="app-logo" alt="sangeetmay logo" />
+      <span class="app-name">संगीतमय</span>
+    </a>
+    <div class="project-title-group" id="project-title-group">
+      <span id="active-project-badge" class="project-badge"></span>
+      <button id="btn-rename-project" class="icon-btn project-topbar-btn hidden" type="button" title="Rename project">✎</button>
+      <button id="btn-delete-project" class="icon-btn project-topbar-btn hidden" type="button" title="Delete project">🗑</button>
+    </div>
+    <!-- Google account area -->
+    <div class="google-user-area" id="google-user-area">
+      <button id="btn-google-signin" class="google-signin-btn" type="button">Sign in with Google</button>
+      <div id="google-user-chip" class="google-user-chip hidden">
+        <img id="google-user-avatar" class="google-avatar" src="" alt="" />
+        <span id="google-user-name" class="google-user-name"></span>
+        <span class="chip-caret">&#9660;</span>
+      </div>
+      <div id="google-dropdown" class="google-dropdown hidden">
+        <div class="google-dropdown-user">
+          <img id="google-avatar-lg" class="google-avatar-lg" src="" alt="" />
+          <div class="google-dropdown-info">
+            <span id="google-dropdown-name" class="google-dropdown-name"></span>
+            <span id="google-dropdown-email" class="google-dropdown-email"></span>
+          </div>
+        </div>
+        <div id="google-dropdown-channel" class="google-dropdown-channel hidden">
+          <div class="google-dropdown-divider"></div>
+          <a id="yt-channel-link" class="google-dropdown-channel-row" href="#" target="_blank" rel="noopener noreferrer">
+            <img id="yt-channel-thumb" class="yt-channel-thumb" src="" alt="YouTube channel" />
+            <span id="yt-channel-name" class="yt-channel-name"></span>
+          </a>
+        </div>
+        <div class="google-dropdown-divider"></div>
+        <a id="btn-drive-folder" class="google-dropdown-drive-link hidden" href="#"
+           target="_blank" rel="noopener noreferrer">
+          📁 Open Drive folder
+        </a>
+        <div class="google-dropdown-divider"></div>
+        <button id="btn-google-signout" type="button" class="google-dropdown-signout">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Sidebar dimmer -->
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+  <!-- Projects Sidebar -->
+  <nav class="sidebar" id="project-nav" aria-label="Projects">
+    <div class="sidebar-header">
+      <span class="sidebar-title">Your Projects</span>
+      <button id="btn-close-nav" class="icon-btn" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="sidebar-create">
+      <input id="project-name-input" class="ipt" type="text" placeholder="Project name…" />
+      <button id="btn-create-project" class="btn btn-primary w-full" type="button">+ Add Project</button>
+    </div>
+    <ul id="project-nav-list" class="project-list"></ul>
+  </nav>
+
+  <!-- Main workspace: Reference | Record -->
+  <main class="workspace" id="layout-root">
+
+    <!-- LEFT: Listen to references -->
+    <section class="panel" id="panel-reference">
+      <div class="panel-hd">
+        <div>
+          <h2 class="panel-title">References</h2>
+          <span class="panel-sub" id="project-folder-label"></span>
+        </div>
+        <div class="panel-hd-right">
+          <span class="now-playing-label" id="ref-now-playing"></span>
+          <button id="btn-note" class="btn btn-sm btn-ghost" type="button" title="Project notes">📝</button>
+          <button id="btn-add-reference" class="btn btn-sm btn-primary" type="button">＋ Add</button>
+        </div>
+
+        <!-- Floating add popup — absolute, overlays player below -->
+        <div class="add-ref-popup hidden" id="add-ref-popup">
+          <div class="add-ref-hd">
+            <span class="add-ref-hd-title">Add Reference</span>
+            <button id="btn-add-ref-cancel" class="icon-btn" type="button" title="Cancel">✕</button>
+          </div>
+          <div class="add-ref-row">
+            <input id="add-ref-url" class="ipt grow" type="text"
+              placeholder="Paste YouTube URL — auto-detected" />
+            <button id="btn-add-ref-url" class="btn btn-ghost" type="button">Add</button>
+          </div>
+          <div class="add-ref-or"><span>or search YouTube</span></div>
+          <div class="add-ref-row">
+            <input id="yt-search-input" class="ipt grow" type="text" placeholder="Search YouTube…" />
+            <button id="btn-yt-search" class="btn btn-ghost" type="button">🔍 Search</button>
+          </div>
+          <div id="yt-search-results" class="yt-search-results hidden"></div>
+          <div class="add-ref-or"><span>or upload file</span></div>
+          <div class="add-ref-row">
+            <label class="btn btn-ghost" for="add-ref-file">Choose file</label>
+            <input id="add-ref-file" type="file" accept="audio/*,video/*" multiple class="sr-only" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Fixed inline player + loop controls -->
+      <div class="ref-player-section">
+        <div class="ref-player" id="ref-player-wrap">
+          <div id="ref-player-idle" class="player-idle">
+            <div class="player-idle-icon">▶</div>
+            <span>Select a reference below to play</span>
+          </div>
+          <div id="ref-youtube-wrap" class="embed-wrap hidden">
+            <div id="ref-youtube-frame"></div>
+          </div>
+          <video id="ref-video" class="hidden" controls></video>
+          <audio id="ref-audio" class="hidden" controls></audio>
+          <button id="btn-maximize-ref" class="btn-maximize" type="button" title="Maximize">&#x26F6;</button>
+
+        </div>
+        <div class="loop-bar hidden" id="loop-bar">
+          <!-- Row 1: A/B markers (left) | play + screenshot (right) -->
+          <div class="loop-row">
+            <button class="loop-btn" id="btn-loop-a" type="button" title="Set loop start (A)">A</button>
+            <span class="loop-pt" id="loop-a-time">-:--</span>
+            <span class="loop-arrow">›</span>
+            <button class="loop-btn" id="btn-loop-b" type="button" title="Set loop end (B)">B</button>
+            <span class="loop-pt" id="loop-b-time">-:--</span>
+            <button class="loop-toggle" id="btn-loop-toggle" type="button">Loop</button>
+            <button class="loop-btn loop-reset-btn" id="btn-loop-reset" type="button" title="Clear A/B">✕</button>
+            <span class="loop-divider"></span>
+            <button class="loop-btn loop-play-btn" id="btn-loop-play" type="button" title="Play / Pause">▶</button>
+
+          </div>
+          <!-- Row 2: save / load clips -->
+          <div class="loop-row loop-clip-row">
+            <span class="loop-clip-label">Clip</span>
+            <input id="clip-label-input" class="clip-label-input" type="text" placeholder="Name…" />
+            <button class="loop-btn" id="btn-save-clip" type="button" title="Save A/B as named clip">Save</button>
+            <select id="clip-select" class="clip-select" title="Load a saved clip">
+              <option value="">— load clip —</option>
+            </select>
+            <button class="loop-btn loop-del-clip-btn" id="btn-delete-clip" type="button" title="Delete selected clip" disabled>🗑</button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Scrollable: reference list only -->
+      <div class="panel-body">
+        <div class="list-section">
+          <p class="list-label">Saved references</p>
+          <ul id="reference-list" class="track-list"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Draggable divider -->
+    <div class="panel-resizer" id="panel-resizer"></div>
+
+    <!-- RIGHT: Record your performance -->
+    <section class="panel" id="panel-record">
+      <div class="panel-hd">
+        <div>
+          <h2 class="panel-title">My Performance</h2>
+          <span class="panel-sub">Record when you're ready</span>
+        </div>
+        <button id="btn-toolbox" class="toolbox-open-btn" type="button" title="Practice Toolbox">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="7" width="20" height="15" rx="2" stroke="currentColor" stroke-width="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" stroke="currentColor" stroke-width="2"/><path d="M12 12v6M9 15h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          Tools
+        </button>
+        <div id="recording-indicator" class="rec-pill">
+          <span class="rec-dot"></span> REC&nbsp;<span id="recording-time">0:00</span>
+        </div>
+      </div>
+      <div class="panel-body rec-panel-body">
+
+        <div class="rec-fixed">
+          <div class="player-wrap webcam-wrap">
+            <video id="webcam-preview" autoplay muted playsinline></video>
+            <div id="webcam-placeholder" class="player-idle">
+              <div class="player-idle-icon cam-icon">&#x2B1B;</div>
+              <span id="rec-placeholder-text">Enable camera to record</span>
+            </div>
+            <video id="rec-video" class="hidden rec-video-player" playsinline controls></video>
+            <button id="btn-maximize-rec" class="btn-maximize" type="button" title="Maximize">&#x26F6;</button>
+          </div>
+
+          <div class="rec-controls">
+            <button id="btn-close-rec-playback" class="btn btn-ghost hidden" type="button">← Back</button>
+            <button id="btn-toggle-camera" class="btn btn-ghost" type="button">📷 Camera</button>
+            <button id="btn-start-recording" class="btn btn-rec" type="button" disabled>
+              <span class="rec-dot-sm"></span> Record
+            </button>
+            <button id="btn-stop-recording" class="btn btn-ghost" type="button" disabled>■ Stop</button>
+          </div>
+        </div>
+
+        <div class="list-section takes-list-section">
+          <p class="list-label">Takes</p>
+          <ul id="recording-list" class="track-list"></ul>
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- YouTube upload modal -->
+  <div id="yt-upload-modal" class="yt-modal hidden" role="dialog" aria-modal="true">
+    <div class="yt-modal-box">
+      <div class="yt-modal-hd">
+        <span class="yt-modal-title">&#128228; Upload to YouTube</span>
+        <button id="btn-yt-modal-close" type="button" class="icon-btn" title="Close">&#10005;</button>
+      </div>
+      <div class="yt-modal-body">
+        <label class="yt-label">Title
+          <input id="yt-title" type="text" class="yt-input" maxlength="100" placeholder="Video title"/>
+        </label>
+        <label class="yt-label">Description
+          <textarea id="yt-desc" class="yt-textarea" rows="3" placeholder="Optional description…"></textarea>
+        </label>
+        <div class="yt-privacy-row">
+          <span class="yt-label-text">Privacy</span>
+          <label class="yt-radio"><input type="radio" name="yt-privacy" value="private" checked> Private</label>
+          <label class="yt-radio"><input type="radio" name="yt-privacy" value="unlisted"> Unlisted</label>
+        </div>
+        <div id="yt-progress-wrap" class="yt-progress-wrap hidden">
+          <div class="yt-progress-track"><div id="yt-progress-fill" class="yt-progress-fill"></div></div>
+          <span id="yt-progress-label" class="yt-progress-label">Preparing…</span>
+        </div>
+        <div id="yt-result" class="yt-result hidden">
+          &#10003; Uploaded! <a id="yt-result-link" href="#" target="_blank" rel="noopener noreferrer">View on YouTube &#8599;</a>
+        </div>
+        <div id="yt-error" class="yt-error hidden"></div>
+      </div>
+      <div class="yt-modal-ft">
+        <button id="btn-yt-cancel" type="button" class="btn btn-ghost">Cancel</button>
+        <button id="btn-yt-upload" type="button" class="btn btn-rec">&#128228; Upload</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmation modal -->
+  <div id="confirm-modal" class="confirm-modal hidden" role="dialog" aria-modal="true">
+    <div class="confirm-box">
+      <p class="confirm-message" id="confirm-message">Are you sure?</p>
+      <div class="confirm-actions">
+        <button id="btn-confirm-cancel" class="btn btn-ghost" type="button">Cancel</button>
+        <button id="btn-confirm-ok" class="btn btn-rec" type="button">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <!-- Floating note popup (draggable, fixed) -->
+  <div class="note-popup hidden" id="note-popup">
+    <div class="note-popup-hd" id="note-popup-hd">
+      <span class="note-popup-title">📝 Notes</span>
+      <div class="notes-toolbar">
+        <a id="btn-note-gdoc" class="notes-fmt-btn hidden" href="#" target="_blank"
+           rel="noopener noreferrer" title="Open in Google Docs"
+           style="text-decoration:none;font-size:12px;">Open in Google Docs ↗</a>
+        <span class="notes-toolbar-sep"></span>
+        <span class="notes-autosave" id="notes-autosave"></span>
+      </div>
+      <button id="btn-note-close" class="icon-btn" type="button" title="Close">✕</button>
+    </div>
+    <div class="notes-body">
+      <div id="notes-editor"></div>
+    </div>
+  </div>
+
+  <!-- ── Toolbox Drawer ──────────────────────────────────────── -->
+  <div id="toolbox-drawer" class="toolbox-drawer" role="complementary" aria-label="Practice Toolbox">
+    <div class="toolbox-hd">
+      <div class="toolbox-hd-left">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="2" y="7" width="20" height="15" rx="2" stroke="currentColor" stroke-width="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" stroke="currentColor" stroke-width="2"/><path d="M12 12v6M9 15h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span class="toolbox-title">Practice Toolbox</span>
+      </div>
+      <button id="btn-toolbox-close" class="icon-btn" type="button" title="Close toolbox">✕</button>
+    </div>
+    <!-- Tool tabs -->
+    <div class="toolbox-nav">
+      <button class="toolbox-tab active" data-tool="tuner" type="button">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 1a3 3 0 013 3v8a3 3 0 01-6 0V4a3 3 0 013-3z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Pitch Tuner
+      </button>
+      <button class="toolbox-tab" data-tool="metronome" type="button">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 2L6 20h12L12 2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><line x1="12" y1="2" x2="12" y2="20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        Metronome
+      </button>
+    </div>
+    <!-- Tool panes -->
+    <div class="toolbox-panes">
+
+      <!-- ── Pitch Tuner ─────────────────────────────── -->
+      <div id="tool-tuner" class="tool-pane">
+        <div class="tuner-body">
+          <!-- Circular note display -->
+          <div id="tuner-ring" class="tuner-ring">
+            <div class="tuner-note-group">
+              <span id="tuner-note" class="tuner-note">—</span>
+              <span id="tuner-octave" class="tuner-octave"></span>
+            </div>
+            <div id="tuner-freq" class="tuner-freq">— Hz</div>
+          </div>
+          <!-- Cents deviation meter -->
+          <div class="tuner-meter-wrap">
+            <div class="tuner-meter-labels">
+              <span>♭ −50</span><span>−25</span><span>0</span><span>+25</span><span>+50 ♯</span>
+            </div>
+            <div class="tuner-meter-track">
+              <div class="tuner-meter-center"></div>
+              <div id="tuner-needle" class="tuner-needle" style="left:50%"></div>
+            </div>
+            <div id="tuner-cents-label" class="tuner-cents-label">0¢</div>
+          </div>
+          <!-- Status badge -->
+          <div id="tuner-status-badge" class="tuner-status-badge">—</div>
+        </div>
+        <!-- Start / Stop -->
+        <button id="btn-tuner-toggle" class="tuner-start-btn" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 1a3 3 0 013 3v8a3 3 0 01-6 0V4a3 3 0 013-3z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          Start Tuner
+        </button>
+      </div>
+
+      <!-- ── Metronome ──────────────────────────── -->
+      <div id="tool-metronome" class="tool-pane hidden">
+
+        <!-- Beat visualiser dots -->
+        <div id="metro-beats" class="metro-beats"></div>
+
+        <!-- BPM control -->
+        <div class="metro-bpm-row">
+          <button id="btn-metro-minus" class="metro-step-btn" type="button" aria-label="Decrease BPM">−</button>
+          <div class="metro-bpm-display">
+            <span id="metro-bpm-value" class="metro-bpm-value">120</span>
+            <span class="metro-bpm-unit">BPM</span>
+          </div>
+          <button id="btn-metro-plus" class="metro-step-btn" type="button" aria-label="Increase BPM">+</button>
+        </div>
+        <input id="metro-bpm-slider" type="range" min="20" max="300" value="120" class="metro-slider" />
+
+        <!-- Time signature -->
+        <div class="metro-section">
+          <div class="metro-section-label">Beats per bar</div>
+          <div class="metro-sig-btns">
+            <button class="metro-sig-btn" data-beats="2" type="button">2</button>
+            <button class="metro-sig-btn" data-beats="3" type="button">3</button>
+            <button class="metro-sig-btn active" data-beats="4" type="button">4</button>
+            <button class="metro-sig-btn" data-beats="5" type="button">5</button>
+            <button class="metro-sig-btn" data-beats="6" type="button">6</button>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="metro-controls">
+          <button id="btn-metro-tap" class="metro-tap-btn" type="button">Tap Tempo</button>
+          <button id="btn-metro-toggle" class="tuner-start-btn" type="button">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+            Start
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+  <div id="toolbox-backdrop" class="toolbox-backdrop hidden"></div>
+
+  <!-- Video maximize overlay -->
+  <div id="video-maximize-overlay" class="video-maximize-overlay hidden">
+    <button id="btn-maximize-close" class="btn-maximize-close" type="button" title="Close">&times;</button>
+    <video id="maximize-video" controls playsinline></video>
+    <iframe id="maximize-iframe" class="hidden" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+  </div>
+
+  </div><!-- #app-shell -->
+
+  <script defer src="https://accounts.google.com/gsi/client"></script>
+  <script defer src="https://www.youtube.com/iframe_api"></script>
+  <script defer src="quill.min.js"></script>
+  <script defer src="yt-config.js"></script>
+  <script defer src="yt-upload.js"></script>
+  <script defer src="app.js"></script>
+
+</body>
+</html>
+

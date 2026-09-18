@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo1.png" alt="sangeetmay" width="140" />
+  <img src="apps/sangeetmay/logo1.png" alt="sangeetmay" width="140" />
 </p>
 
 <h1 align="center">Sangeetmay</h1>

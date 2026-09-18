@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "announcements": [
+    {
+      "id": "1-welcome-to-domark",
+      "enabled": true,
+      "tag": "Welcome",
+      "title": "Welcome to domark 👋",
+      "body": "Sync your bookmarks, spin them into focused projects, and track what you finish",
+      "date": "2026-09-18"
+    }
+  ]
+}
