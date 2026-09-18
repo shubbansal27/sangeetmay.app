@@ -8,6 +8,7 @@ export const state = {
   activeSource: 'google_tasks',
   activeDateFilter: 'all',
   activePlaylist: 'all',
+  activeList: 'all',
   profile: null,
   token: null,
   projects: [],

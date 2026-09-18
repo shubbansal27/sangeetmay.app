@@ -134,21 +134,21 @@ function itemRow(item) {
   );
 }
 
-// Populate the playlist quick-filter from the YouTube items currently loaded.
-function renderPlaylistFilter(slice, isYouTube) {
-  const wrap = byId('playlist-filter-wrap');
-  const select = byId('playlist-filter');
+// Populate a source-specific group filter (YouTube playlists / Task lists) from the loaded items.
+function renderGroupFilter(slice, visible, cfg) {
+  const wrap = byId(cfg.wrapId);
+  const select = byId(cfg.selectId);
   if (!wrap || !select) return;
-  wrap.hidden = !isYouTube;
-  if (!isYouTube) return;
-  const names = [...new Set(slice.items.map((item) => item.playlist).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-  if (state.activePlaylist !== 'all' && !names.includes(state.activePlaylist)) state.activePlaylist = 'all';
+  wrap.classList.toggle('hidden', !visible);
+  if (!visible) return;
+  const names = [...new Set(slice.items.map((item) => item[cfg.field]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  if (state[cfg.stateKey] !== 'all' && !names.includes(state[cfg.stateKey])) state[cfg.stateKey] = 'all';
   select.innerHTML =
-    '<option value="all">All playlists</option>' +
+    '<option value="all">' + escapeHtml(cfg.allLabel) + '</option>' +
     names
-      .map((name) => '<option value="' + escapeHtml(name) + '"' + (name === state.activePlaylist ? ' selected' : '') + '>' + escapeHtml(name) + '</option>')
+      .map((name) => '<option value="' + escapeHtml(name) + '"' + (name === state[cfg.stateKey] ? ' selected' : '') + '>' + escapeHtml(name) + '</option>')
       .join('');
-  select.value = state.activePlaylist;
+  select.value = state[cfg.stateKey];
 }
 
 export function renderInbox() {
@@ -158,6 +158,7 @@ export function renderInbox() {
   const source = activeSource();
   const slice = currentSourceState();
   const isYouTube = Boolean(state.profile) && source.id === 'youtube_review_later';
+  const isTasks = Boolean(state.profile) && source.id === 'google_tasks';
 
   if (title) title.textContent = state.profile ? source.label : 'Waiting for sign-in';
   if (copy) {
@@ -169,7 +170,8 @@ export function renderInbox() {
   if (synced) synced.textContent = state.profile ? syncedLabel(slice) : '';
   const refreshBtn = byId('btn-inbox-refresh');
   if (refreshBtn) refreshBtn.disabled = !state.profile || slice.status === 'loading' || slice.status === 'refreshing';
-  renderPlaylistFilter(slice, isYouTube);
+  renderGroupFilter(slice, isTasks, { wrapId: 'list-filter-wrap', selectId: 'list-filter', field: 'list', stateKey: 'activeList', allLabel: 'All lists' });
+  renderGroupFilter(slice, isYouTube, { wrapId: 'playlist-filter-wrap', selectId: 'playlist-filter', field: 'playlist', stateKey: 'activePlaylist', allLabel: 'All configured' });
 
   if (!list) return;
 
@@ -188,7 +190,8 @@ export function renderInbox() {
 
   const items = slice.items
     .filter((item) => matchesDateFilter(item, state.activeDateFilter))
-    .filter((item) => !isYouTube || state.activePlaylist === 'all' || item.playlist === state.activePlaylist);
+    .filter((item) => !isYouTube || state.activePlaylist === 'all' || item.playlist === state.activePlaylist)
+    .filter((item) => !isTasks || state.activeList === 'all' || item.list === state.activeList);
   if (items.length === 0) {
     list.innerHTML = stateCard('◇', 'Nothing here yet', 'No items in this window. Try a wider date range or another source.');
     return;
