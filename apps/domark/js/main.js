@@ -912,8 +912,7 @@ function wireEvents() {
   wireSettings();
 }
 
-function wireNotifications() {
-  const bell = byId('notif-bell');
+function wireNotifications() {  const bell = byId('notif-bell');
   if (bell) {
     bell.addEventListener('click', () => {
       const menu = byId('notif-menu');
