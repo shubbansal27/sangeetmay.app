@@ -68,6 +68,7 @@ function mapTask(task, list) {
   return {
     source: 'Google Tasks',
     tag: listTitle,
+    list: listTitle,
     title: task.title || '(Untitled task)',
     body: notesSnippet,
     addedAt,

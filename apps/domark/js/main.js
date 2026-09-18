@@ -716,6 +716,14 @@ function wireInbox() {
     });
   }
 
+  const listFilter = byId('list-filter');
+  if (listFilter) {
+    listFilter.addEventListener('change', () => {
+      state.activeList = listFilter.value || 'all';
+      render();
+    });
+  }
+
   const list = byId('inbox-list');
   if (list) {
     list.addEventListener('click', (event) => {

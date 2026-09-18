@@ -344,6 +344,13 @@ button {
   text-align: center;
 }
 
+.login-beta {
+  margin-top: var(--space-2);
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
 .login-status {
   margin-top: var(--space-4);
   font-size: 13px;
@@ -410,6 +417,57 @@ button {
   font-weight: 700;
   letter-spacing: 0.04em;
   font-size: 17px;
+}
+
+.topbar__beta {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand-deep);
+  background: var(--brand-soft);
+  border-radius: var(--radius-pill);
+  padding: 2px 7px;
+  margin-left: -4px;
+}
+
+.feedback-fab {
+  position: fixed;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--brand);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--shadow-lg);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.feedback-fab:hover {
+  transform: translateY(-2px);
+  background: var(--brand-deep);
+}
+
+.feedback-fab__icon {
+  flex: none;
+}
+
+@media (max-width: 820px) {
+  .feedback-fab {
+    bottom: calc(var(--space-4) + 60px);
+    padding: 11px;
+  }
+
+  .feedback-fab__label {
+    display: none;
+  }
 }
 
 .topbar__right {
