@@ -43,6 +43,8 @@ import {
 import { render } from './render.js';
 import { refreshInsights, resetInsights, showInsights } from './insights.js';
 import { loadAnnouncements, markAnnouncementsSeen } from './announcements.js';
+import { createTimebox, deleteTimebox } from './calendar.js';
+import { refreshTimeboxes, resetTimeboxes } from './timebox.js';
 import { addCustomCategory, categoryOptionsHtml, allCategories, ADD_CATEGORY_VALUE } from './categories.js';
 
 // Handle the "+ Add new category…" entry in a category <select>: prompt, persist, then reselect.
@@ -92,6 +94,7 @@ async function switchProfile(name) {
     resetProfileCaches();
     resetInsights();
     resetSettingsCache();
+    resetTimeboxes();
     state.projects = loadProjects();
     state.selectedProjectId = null;
     state.selectedProjectCategory = null;
@@ -371,6 +374,7 @@ function goToView(viewName) {
   setActiveView(viewName);
   render();
   if (viewName === 'insights') showInsights();
+  if (viewName === 'timebox') refreshTimeboxes();
 }
 
 function openProjectFromItem(item) {
@@ -910,6 +914,61 @@ function wireEvents() {
   wireRecorder();
   wireNotifications();
   wireSettings();
+  wireTimebox();
+}
+
+async function handleTimeboxSubmit(event) {
+  event.preventDefault();
+  const title = (byId('tb-title')?.value || '').trim();
+  const date = byId('tb-date')?.value;
+  const time = byId('tb-time')?.value;
+  const duration = Number(byId('tb-duration')?.value || 60);
+  const description = (byId('tb-description')?.value || '').trim();
+  if (!title) {
+    showToast('Add a title for your timebox.');
+    return;
+  }
+  if (!date || !time) {
+    showToast('Pick a date and start time.');
+    return;
+  }
+  const start = new Date(date + 'T' + time);
+  if (Number.isNaN(start.getTime())) {
+    showToast('That date and time look invalid.');
+    return;
+  }
+  const end = new Date(start.getTime() + duration * 60000);
+  showBusy('Scheduling…');
+  try {
+    await createTimebox({ title, description, start: start.toISOString(), end: end.toISOString() });
+    byId('timebox-form')?.reset();
+    showToast('Timebox scheduled.');
+    await refreshTimeboxes();
+  } catch (error) {
+    showToast(error.message || 'Could not schedule the timebox.');
+  } finally {
+    hideBusy();
+  }
+}
+
+function wireTimebox() {
+  byId('timebox-form')?.addEventListener('submit', handleTimeboxSubmit);
+  byId('btn-timebox-refresh')?.addEventListener('click', () => refreshTimeboxes());
+  byId('timebox-list')?.addEventListener('click', async (event) => {
+    const cancel = event.target.closest('[data-cancel-timebox]');
+    if (!cancel) return;
+    if (!window.confirm('Cancel this timebox? It will be removed from your calendar.')) return;
+    showBusy('Canceling…');
+    try {
+      await deleteTimebox(cancel.dataset.cancelTimebox);
+      showToast('Timebox canceled.');
+      await refreshTimeboxes();
+    } catch (error) {
+      showToast(error.message || 'Could not cancel this timebox.');
+    } finally {
+      hideBusy();
+    }
+  });
 }
 
 function wireNotifications() {  const bell = byId('notif-bell');
