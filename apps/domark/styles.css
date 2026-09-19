@@ -344,13 +344,6 @@ button {
   text-align: center;
 }
 
-.login-beta {
-  margin-top: var(--space-2);
-  font-size: 12px;
-  color: var(--muted);
-  text-align: center;
-}
-
 .login-status {
   margin-top: var(--space-4);
   font-size: 13px;
@@ -2560,6 +2553,94 @@ textarea.input {
 
 .insights-note {
   font-size: 13px;
+}
+
+/* ---------- Timebox ---------- */
+.timebox-body {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.timebox-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.timebox-form__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.timebox-form__hint {
+  font-size: 12px;
+}
+
+.timebox-list-head h3 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.timebox-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.timebox-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.timebox-card__title {
+  margin: 0 0 2px;
+  font-size: 15px;
+}
+
+.timebox-card__when {
+  margin: 0;
+  font-size: 13px;
+  color: var(--brand-deep);
+  font-weight: 500;
+}
+
+.timebox-card__desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.timebox-card__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.timebox-card__open {
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.timebox-card__open:hover {
+  text-decoration: underline;
 }
 
 /* ---------- Responsive ---------- */

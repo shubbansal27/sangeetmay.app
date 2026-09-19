@@ -55,7 +55,6 @@
           </span>
           Continue with Google
         </button>
-        <p class="login-beta">domark is in early beta — your feedback shapes what's next.</p>
         <p class="login-trust">Your notes and files stay in your own Google Drive.</p>
         <p id="login-status" class="login-status hidden"></p>
       </section>
@@ -120,6 +119,10 @@
           <span class="nav-link__icon" aria-hidden="true">▤</span>
           <span>Projects</span>
         </button>
+        <button class="nav-link" data-view="timebox" type="button">
+          <span class="nav-link__icon" aria-hidden="true">🗓</span>
+          <span>Timebox</span>
+        </button>
         <button class="nav-link" data-view="insights" type="button">
           <span class="nav-link__icon" aria-hidden="true">📊</span>
           <span>Insights</span>
@@ -181,8 +184,52 @@
           <div id="project-workspace" class="project-workspace hidden"></div>
         </section>
 
-        <!-- Insights view -->
+        <!-- Timebox view -->
+        <section id="view-timebox" class="view">
+          <section class="panel">
+            <div class="panel__head">
+              <div>
+                <p class="kicker">Timebox</p>
+                <h2>Schedule focused time</h2>
+              </div>
+              <div class="panel__head-end">
+                <p class="panel__copy">Blocks time on your Google Calendar (only you).</p>
+                <button id="btn-timebox-refresh" class="btn btn--soft btn--sm" type="button" aria-label="Refresh timeboxes" title="Refresh">↻</button>
+              </div>
+            </div>
+            <div class="timebox-body">
+              <form id="timebox-form" class="timebox-form">
+                <div class="form-grid">
+                  <label class="field"><span>Title</span>
+                    <input id="tb-title" class="input" type="text" maxlength="120" placeholder="e.g. Study system design" /></label>
+                  <label class="field"><span>Date</span>
+                    <input id="tb-date" class="input" type="date" /></label>
+                </div>
+                <div class="form-grid">
+                  <label class="field"><span>Start time</span>
+                    <input id="tb-time" class="input" type="time" /></label>
+                  <label class="field"><span>Duration</span>
+                    <select id="tb-duration" class="select">
+                      <option value="30">30 minutes</option>
+                      <option value="60" selected>1 hour</option>
+                      <option value="90">1.5 hours</option>
+                      <option value="120">2 hours</option>
+                    </select></label>
+                </div>
+                <label class="field"><span>Description</span>
+                  <textarea id="tb-description" class="input" rows="2" placeholder="Optional notes"></textarea></label>
+                <div class="timebox-form__actions">
+                  <span class="muted timebox-form__hint">Adds an event to your Google Calendar.</span>
+                  <button class="btn btn--primary" type="submit">Schedule timebox</button>
+                </div>
+              </form>
+              <div class="timebox-list-head"><h3>Upcoming</h3></div>
+              <div id="timebox-list" class="timebox-list"></div>
+            </div>
+          </section>
+        </section>
 
+        <!-- Insights view -->
         <section id="view-insights" class="view">
           <section class="panel">
             <div class="panel__head">
@@ -207,6 +254,9 @@
       </button>
       <button class="nav-link" data-view="projects" type="button">
         <span class="nav-link__icon" aria-hidden="true">▤</span><span>Projects</span>
+      </button>
+      <button class="nav-link" data-view="timebox" type="button">
+        <span class="nav-link__icon" aria-hidden="true">🗓</span><span>Timebox</span>
       </button>
       <button class="nav-link" data-view="insights" type="button">
         <span class="nav-link__icon" aria-hidden="true">📊</span><span>Insights</span>

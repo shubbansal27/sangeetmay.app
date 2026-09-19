@@ -4,6 +4,7 @@ import { state } from './store.js';
 import { renderShell, renderUser, setActiveView } from './shell.js';
 import { renderSourceControls, renderInbox } from './inbox.js';
 import { renderProjects } from './projects.js';
+import { renderTimebox } from './timebox.js';
 import { renderInsights } from './insights.js';
 
 export function render() {
@@ -12,6 +13,7 @@ export function render() {
   renderSourceControls();
   renderInbox();
   renderProjects();
+  renderTimebox();
   renderInsights();
   setActiveView(state.activeView);
 }

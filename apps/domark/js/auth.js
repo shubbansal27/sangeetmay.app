@@ -9,7 +9,14 @@ function callbackUrl() {
 
 export function authScope() {
   const sourceScopes = SOURCES.map((source) => source.scope).filter(Boolean);
-  return ['openid', 'profile', 'email', 'https://www.googleapis.com/auth/drive', ...sourceScopes].join(' ');
+  return [
+    'openid',
+    'profile',
+    'email',
+    'https://www.googleapis.com/auth/drive',
+    'https://www.googleapis.com/auth/calendar.events',
+    ...sourceScopes,
+  ].join(' ');
 }
 
 export function openAuthPopup(scope, stateValue, extraParams = {}) {
