@@ -1021,8 +1021,21 @@ button {
 .view-toolbar__right {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2) var(--space-3);
   flex-wrap: wrap;
+  justify-content: flex-end;
+  /* Stay right-aligned even when the row wraps below the source tabs. */
+  margin-left: auto;
+}
+
+/* Compact toolbar controls so Tasks fit on one line and YouTube's extra Playlist filter wraps tidily. */
+.view-toolbar__right .select {
+  font-size: 13px;
+  padding: 7px 28px 7px 10px;
+}
+
+.view-toolbar__right .field-inline {
+  gap: var(--space-1);
 }
 
 .inbox-synced {
@@ -1240,12 +1253,26 @@ button {
   margin-top: 2px;
 }
 
+.inbox-row__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-self: end;
+}
+
 .inbox-row__action {
   opacity: 0;
   transition: opacity 0.12s ease;
 }
 
-.inbox-row:hover .inbox-row__action {
+.inbox-row__remove {
+  opacity: 0;
+  color: #b42318;
+  transition: opacity 0.12s ease;
+}
+
+.inbox-row:hover .inbox-row__action,
+.inbox-row:hover .inbox-row__remove {
   opacity: 1;
 }
 
@@ -1481,20 +1508,6 @@ button {
   background: rgba(255, 255, 255, 0.6);
 }
 
-.proj-card__remove {
-  position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
-  padding: 3px 9px;
-  font-size: 12px;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.proj-card:hover .proj-card__remove {
-  opacity: 1;
-}
-
 .pill,
 .badge {
   display: inline-flex;
@@ -1640,6 +1653,10 @@ button {
 .workspace-head__actions {
   display: flex;
   gap: var(--space-2);
+}
+
+.workspace-head__remove {
+  color: #b42318;
 }
 
 .wtabs {
@@ -2696,6 +2713,14 @@ textarea.input {
   .inbox-row__action {
     opacity: 1;
     justify-self: start;
+  }
+
+  .inbox-row__actions {
+    justify-self: start;
+  }
+
+  .inbox-row__remove {
+    opacity: 1;
   }
 
   .form-grid {

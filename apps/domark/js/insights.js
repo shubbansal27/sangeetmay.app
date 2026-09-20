@@ -1,14 +1,13 @@
-// Insights view: aggregates the Drive event ledger into saved/completed metrics across a timeline range.
+// Insights view: live snapshot of the follow-through funnel, derived entirely from current state (no Drive ledger).
 
 import { state } from './store.js';
 import { byId, escapeHtml } from './utils.js';
-import { loadInsights, loadInsightEvents } from './drive.js';
-import { SOURCES, DATE_FILTERS } from './config.js';
+import { sourceState } from './sources.js';
+import { enabledSourceIds } from './settings.js';
+import { DATE_FILTERS } from './config.js';
 import { allCategories } from './categories.js';
 
-let insightsData = null;
-let loading = false;
-let selectedRange = '7d';
+let selectedRange = 'all';
 let activePie = null;
 let wired = false;
 
@@ -85,36 +84,92 @@ function categoryCounts(events, catMap) {
   }));
 }
 
-const SERIES_COLORS = CATEGORY_COLORS;
-
-function sourceCounts(added) {
-  return SOURCES.map((source, i) => ({
-    name: source.label,
-    count: added.filter((event) => event.source === source.id).length,
-    color: SERIES_COLORS[i % SERIES_COLORS.length],
-  }));
+function completedProject(project) {
+  return Number(project.progress) >= 100 || project.status === 'Complete';
 }
 
-// Live snapshot: unique saved bookmarks that never became a project. Not tied to the selected range.
-function computeWaiting(added, created) {
+// Synthesise created/completed "events" from current projects so the range/trend/donut code stays unchanged.
+function projectCreatedEvents() {
+  return state.projects
+    .filter((project) => project.createdAt)
+    .map((project) => ({ at: project.createdAt, projectId: project.id }));
+}
+
+function projectCompletedEvents() {
+  return state.projects
+    .filter((project) => completedProject(project) && (project.completedAt || project.createdAt))
+    .map((project) => ({ at: project.completedAt || project.createdAt, projectId: project.id }));
+}
+
+// Waiting now: current inbox items (enabled sources) not yet turned into a project. Pure live snapshot.
+function computeWaitingLive() {
   const mapped = new Set();
   state.projects.forEach((project) => {
     const ref = (project.bookmark && project.bookmark.refId) || project.bookmarkRef;
     if (ref) mapped.add(ref);
   });
-  created.forEach((event) => {
-    if (event.refId) mapped.add(event.refId);
-  });
+  const STALE_MS = 30 * DAY_MS;
   const seen = new Set();
   let waiting = 0;
-  added.forEach((event) => {
-    const ref = event.refId;
-    if (!ref || seen.has(ref)) return;
-    seen.add(ref);
-    if (!mapped.has(ref)) waiting += 1;
+  let stale = 0;
+  enabledSourceIds().forEach((id) => {
+    const slice = sourceState(id);
+    (slice.items || []).forEach((item) => {
+      const ref = item.refId;
+      if (!ref || seen.has(ref) || mapped.has(ref)) return;
+      seen.add(ref);
+      waiting += 1;
+      const t = item.addedAt ? new Date(item.addedAt).getTime() : NaN;
+      if (!Number.isNaN(t) && Date.now() - t > STALE_MS) stale += 1;
+    });
   });
-  const total = seen.size;
-  return { waiting, total, pct: total ? Math.round((waiting / total) * 100) : 0 };
+  return { waiting, stale };
+}
+
+// Timeline source: when the current bookmarks were saved, from each item's source addedAt (unique by refId).
+function bookmarkEvents() {
+  const seen = new Set();
+  const events = [];
+  enabledSourceIds().forEach((id) => {
+    const slice = sourceState(id);
+    (slice.items || []).forEach((item) => {
+      const ref = item.refId;
+      if (!ref || seen.has(ref) || !item.addedAt) return;
+      seen.add(ref);
+      events.push({ at: item.addedAt });
+    });
+  });
+  return events;
+}
+
+// Age (days from today) of each unassigned bookmark, bucketed to show how long saves are piling up.
+const AGE_BUCKETS = [
+  { label: '0–1d', max: 1 },
+  { label: '2–7d', max: 7 },
+  { label: '8–30d', max: 30 },
+  { label: '31–90d', max: 90 },
+  { label: '90d+', max: Infinity },
+];
+
+function waitingAges() {
+  const mapped = new Set();
+  state.projects.forEach((project) => {
+    const ref = (project.bookmark && project.bookmark.refId) || project.bookmarkRef;
+    if (ref) mapped.add(ref);
+  });
+  const seen = new Set();
+  const ages = [];
+  enabledSourceIds().forEach((id) => {
+    const slice = sourceState(id);
+    (slice.items || []).forEach((item) => {
+      const ref = item.refId;
+      if (!ref || seen.has(ref) || mapped.has(ref)) return;
+      seen.add(ref);
+      const t = item.addedAt ? new Date(item.addedAt).getTime() : NaN;
+      ages.push(Number.isNaN(t) ? 0 : Math.max(0, Math.floor((Date.now() - t) / DAY_MS)));
+    });
+  });
+  return ages;
 }
 
 function donut(segments) {
@@ -176,7 +231,7 @@ function statButton(id, value, title, sub, open) {
 }
 
 function waitingStat(w) {
-  const note = 'Not yet a project' + (w.total ? ' · ' + w.pct + '% of saved' : '');
+  const note = w.stale ? w.stale + ' waiting over 30 days' : 'Nothing piling up';
   return (
     '<div class="ins-stat ins-stat--wait">' +
     '<span class="ins-stat__value">' + w.waiting + '</span>' +
@@ -186,29 +241,53 @@ function waitingStat(w) {
   );
 }
 
-function bookmarksSection(addedInRange, added, created, rangeId, active) {
-  const label = 'in ' + rangeLabel(rangeId);
-  const waiting = computeWaiting(added, created);
-  const cards =
-    '<div class="ins-hero ins-hero--2">' +
-    statButton('saved', addedInRange.length, 'Bookmarks saved', label, active === 'saved') +
-    waitingStat(waiting) +
-    '</div>';
-  const pie = active === 'saved' ? piePanel(sourceCounts(addedInRange)) : '';
+function bookmarksSection(waiting, rangeId) {
   return (
     '<section class="ins-group">' +
     '<h3 class="ins-group__title">Bookmarks</h3>' +
-    cards + pie +
+    '<div class="ins-hero ins-hero--1">' + waitingStat(waiting) + '</div>' +
+    bookmarkTimelineBlock(bookmarkEvents(), rangeId) +
+    pendingAgeBlock(waitingAges()) +
     '</section>'
+  );
+}
+
+// Distribution of how old the unassigned (waiting) bookmarks are, measured from today.
+function pendingAgeBlock(ages) {
+  const counts = AGE_BUCKETS.map(() => 0);
+  ages.forEach((days) => {
+    const idx = AGE_BUCKETS.findIndex((bucket) => days <= bucket.max);
+    counts[idx >= 0 ? idx : AGE_BUCKETS.length - 1] += 1;
+  });
+  const max = Math.max(1, ...counts);
+  let columns = '';
+  AGE_BUCKETS.forEach((bucket, i) => {
+    const count = counts[i];
+    const h = Math.round((count / max) * 100);
+    columns +=
+      '<div class="ins-col" title="' + escapeHtml(bucket.label + ': ' + count + ' waiting') + '">' +
+      '<div class="ins-col__track">' +
+      '<div class="ins-col__bar ins-col__bar--saved" style="height:' + h + '%"></div>' +
+      '</div>' +
+      '<span class="ins-col__x">' + escapeHtml(bucket.label) + '</span>' +
+      '</div>';
+  });
+  return (
+    '<div class="panel-block">' +
+    '<div class="panel-block__head"><h3>Pending age</h3>' +
+    '<span class="ins-legend"><span class="ins-legend__key ins-legend__key--saved"></span>Waiting</span></div>' +
+    '<div class="ins-chart">' + columns + '</div>' +
+    '</div>'
   );
 }
 
 function projectsSection(createdInRange, completedInRange, created, completed, catMap, rangeId, active) {
   const label = 'in ' + rangeLabel(rangeId);
+  const rate = created.length ? Math.round((completed.length / created.length) * 100) : 0;
   const cards =
     '<div class="ins-hero ins-hero--2">' +
     statButton('created', createdInRange.length, 'Projects created', label, active === 'created') +
-    statButton('completed', completedInRange.length, 'Completed', label, active === 'completed') +
+    statButton('completed', completedInRange.length, 'Completed', rate + '% of all created', active === 'completed') +
     '</div>';
   let pie = '';
   if (active === 'created') pie = piePanel(categoryCounts(createdInRange, catMap));
@@ -292,31 +371,52 @@ function trendBlock(created, completed, rangeId) {
   );
 }
 
+// Single-series timeline of bookmarks saved over the selected range.
+function bookmarkTimelineBlock(events, rangeId) {
+  const plan = trendPlan(rangeId, events);
+  const byBucket = bucketize(events, plan);
+  const max = Math.max(1, ...byBucket);
+  let columns = '';
+  for (let i = 0; i < plan.count; i += 1) {
+    const count = byBucket[i];
+    const h = Math.round((count / max) * 100);
+    const label = bucketLabel(plan.start + i * plan.step, plan.unit);
+    columns +=
+      '<div class="ins-col" title="' + escapeHtml(label + ': ' + count + ' saved') + '">' +
+      '<div class="ins-col__track">' +
+      '<div class="ins-col__bar ins-col__bar--saved" style="height:' + h + '%"></div>' +
+      '</div>' +
+      '<span class="ins-col__x">' + escapeHtml(label) + '</span>' +
+      '</div>';
+  }
+  return (
+    '<div class="panel-block">' +
+    '<div class="panel-block__head"><h3>Bookmark timeline</h3>' +
+    '<span class="ins-legend"><span class="ins-legend__key ins-legend__key--saved"></span>Saved</span></div>' +
+    '<div class="ins-chart">' + columns + '</div>' +
+    '</div>'
+  );
+}
+
 function emptyState() {
   return '<p class="muted insights-note">Save bookmarks and complete projects to start tracking your progress.</p>';
 }
 
-function dashboard(data, rangeId) {
-  const events = Array.isArray(data.events) ? data.events : [];
-  const added = events.filter((event) => event.type === 'bookmark_added');
-  const created = events.filter((event) => event.type === 'project_created');
-  const completed = events.filter((event) => event.type === 'project_completed');
-  if (added.length === 0 && created.length === 0 && completed.length === 0) {
+function dashboard(rangeId) {
+  const created = projectCreatedEvents();
+  const completed = projectCompletedEvents();
+  const waiting = computeWaitingLive();
+  if (created.length === 0 && completed.length === 0 && waiting.waiting === 0) {
     return rangeBar(rangeId) + emptyState();
   }
-  const addedInRange = added.filter((event) => inRange(event, rangeId));
   const createdInRange = created.filter((event) => inRange(event, rangeId));
   const completedInRange = completed.filter((event) => inRange(event, rangeId));
   const catMap = projectCategoryMap();
   return (
     rangeBar(rangeId) +
-    bookmarksSection(addedInRange, added, created, rangeId, activePie) +
+    bookmarksSection(waiting, rangeId) +
     projectsSection(createdInRange, completedInRange, created, completed, catMap, rangeId, activePie)
   );
-}
-
-function skeleton() {
-  return '<div class="insights-cards">' + Array.from({ length: 5 }).map(() => '<div class="insight-card insight-card--skeleton"></div>').join('') + '</div>';
 }
 
 function stateCard(title, copy) {
@@ -351,48 +451,18 @@ export function renderInsights() {
     root.innerHTML = stateCard('Sign in to see insights', 'Your saved and completed metrics appear here once you sign in.');
     return;
   }
-  if (loading && !insightsData) {
-    root.innerHTML = skeleton();
-    return;
-  }
-  if (!insightsData) {
-    root.innerHTML = stateCard('No insights yet', 'Sync your inbox and complete projects to start tracking momentum.');
-    return;
-  }
-  root.innerHTML = dashboard(insightsData, selectedRange);
+  root.innerHTML = dashboard(selectedRange);
 }
 
-// Clear cached ledger/view state so the next render reflects a freshly switched profile.
+// View-only reset when switching profiles; insights are always derived live from current state.
 export function resetInsights() {
-  insightsData = null;
   activePie = null;
-  loading = false;
 }
 
-// Show insights from cached data (no fetch/popup); load once if nothing is cached yet.
 export function showInsights() {
-  if (insightsData || !state.profile || !state.token) {
-    renderInsights();
-    return;
-  }
-  refreshInsights();
+  renderInsights();
 }
 
-// Reload the ledger from Drive, then re-render the view.
-export async function refreshInsights() {
-  if (!state.profile || !state.token) {
-    renderInsights();
-    return;
-  }
-  loading = true;
+export function refreshInsights() {
   renderInsights();
-  try {
-    const [stateObj, events] = await Promise.all([loadInsights(), loadInsightEvents(6)]);
-    insightsData = { state: stateObj, events };
-  } catch {
-    insightsData = { state: null, events: [] };
-  } finally {
-    loading = false;
-    renderInsights();
-  }
 }

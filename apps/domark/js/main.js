@@ -4,9 +4,9 @@ import { state, saveProjects, loadProjects, restoreProfile, currentProject } fro
 import { showToast, setLoginStatus, clearLoginStatus, showBusy, hideBusy, setBusyMessage } from './feedback.js';
 import { byId, escapeHtml } from './utils.js';
 import { signIn, signOut, trySilentSignIn } from './auth.js';
-import { createArtifact, syncProjectArtifacts, saveProjectStatus, saveProjectDetails, createRecordingArtifact, createLinkArtifact, recordProjectCompleted, hydrateProjects, loadProjectMetadata, deleteProject, resetProfileCaches, loadProfilesList, saveProfilesList, deleteProfileFolder } from './drive.js';
-import { refreshAllSources, refreshActiveSource, ensureActiveSourceLoaded, fetchYouTubePlaylists } from './sources.js';
-import { SOURCES, YOUTUBE_PLAYLIST_TITLE } from './config.js';
+import { createArtifact, syncProjectArtifacts, saveProjectStatus, saveProjectDetails, createRecordingArtifact, createLinkArtifact, hydrateProjects, loadProjectMetadata, deleteProject, resetProfileCaches, loadProfilesList, saveProfilesList, deleteProfileFolder, resetProfileData } from './drive.js';
+import { refreshAllSources, refreshActiveSource, ensureActiveSourceLoaded, fetchYouTubePlaylists, removeInboxItem } from './sources.js';
+import { SOURCES, YOUTUBE_PLAYLIST_TITLE, STORAGE_KEYS } from './config.js';
 import {
   loadSettings,
   resetSettingsCache,
@@ -197,10 +197,10 @@ function settingsProfilesSection() {
     .map((name) => {
       const label = name === DEFAULT_PROFILE ? 'Default' : name;
       const badge = name === active ? ' <span class="set-profile__badge">active</span>' : '';
-      const del = name === DEFAULT_PROFILE
-        ? ''
+      const action = name === DEFAULT_PROFILE
+        ? '<button class="btn btn--ghost btn--sm" type="button" data-reset-profile="' + escapeHtml(name) + '">Reset</button>'
         : '<button class="btn btn--ghost btn--sm" type="button" data-delete-profile="' + escapeHtml(name) + '">Delete</button>';
-      return '<div class="set-profile"><span class="set-profile__name">' + escapeHtml(label) + badge + '</span>' + del + '</div>';
+      return '<div class="set-profile"><span class="set-profile__name">' + escapeHtml(label) + badge + '</span>' + action + '</div>';
     })
     .join('');
   return (
@@ -307,8 +307,59 @@ async function deleteProfileFlow(name) {
   showToast('Deleted ' + name + ' profile.');
 }
 
-// Remove all localStorage entries namespaced to a deleted profile.
+// Wipe a profile's data (keeping the profile itself) after confirmation. Offered for the default profile.
+async function resetProfileFlow(name) {
+  if (!name) return;
+  const label = name === DEFAULT_PROFILE ? 'Default' : name;
+  const ok = window.confirm(
+    'Reset the "' + label + '" profile?\nThis permanently clears its projects, insights, and settings in Drive and cannot be undone.'
+  );
+  if (!ok) return;
+  // Reset always operates on the active profile's Drive folders, so make it active first.
+  if (getActiveProfile() !== name) setActiveProfileLocal(name);
+  showBusy('Resetting ' + label + ' profile…');
+  try {
+    if (state.token) await resetProfileData();
+    clearProfileLocalData(name);
+    resetProfileCaches();
+    resetInsights();
+    resetSettingsCache();
+    resetTimeboxes();
+    state.projects = loadProjects();
+    state.selectedProjectId = null;
+    state.selectedProjectCategory = null;
+    state.selectedProjectStatus = 'all';
+    state.selectedProjectTab = 'overview';
+    Object.values(state.sources).forEach((slice) => {
+      slice.items = [];
+      slice.status = 'idle';
+      slice.error = '';
+      slice.fetchedAt = null;
+    });
+    render();
+    if (state.profile && state.token) {
+      await loadSettings();
+      await loadProjectsFromDrive();
+      await refreshAllSources({ force: true });
+      await refreshInsights();
+    }
+  } finally {
+    hideBusy();
+  }
+  showToast('Reset ' + label + ' profile.');
+}
+
+// Remove a profile's local caches. Named profiles use suffixed keys; the default profile uses the base keys.
 function clearProfileLocalData(name) {
+  if (name === DEFAULT_PROFILE) {
+    [
+      STORAGE_KEYS.projects,
+      STORAGE_KEYS.settings,
+      STORAGE_KEYS.customCategories,
+      STORAGE_KEYS.driveProjects,
+    ].forEach((key) => localStorage.removeItem(key));
+    return;
+  }
   const suffix = '::' + name;
   Object.keys(localStorage).forEach((key) => {
     if (key.endsWith(suffix)) localStorage.removeItem(key);
@@ -353,6 +404,12 @@ function wireSettings() {
     }
     if (event.target.closest('#btn-settings-add-profile')) {
       await addProfileFlow();
+      renderSettings();
+      return;
+    }
+    const reset = event.target.closest('[data-reset-profile]');
+    if (reset) {
+      await resetProfileFlow(reset.dataset.resetProfile);
       renderSettings();
       return;
     }
@@ -455,12 +512,14 @@ async function updateProjectMeta(changes) {
   if (!project) return;
   const wasComplete = Number(project.progress) >= 100 || project.status === 'Complete';
   Object.assign(project, changes);
+  const isComplete = Number(project.progress) >= 100 || project.status === 'Complete';
+  // Stamp completion time on the transition; clear it when a project is reopened.
+  if (isComplete && !wasComplete) project.completedAt = new Date().toISOString();
+  else if (!isComplete && wasComplete) project.completedAt = null;
   saveProjects();
   render();
   try {
     await saveProjectStatus(project);
-    const isComplete = Number(project.progress) >= 100 || project.status === 'Complete';
-    if (!wasComplete && isComplete) await recordProjectCompleted(project);
   } catch (error) {
     showToast(error.message || 'Saved locally. Google Drive sync failed.');
   }
@@ -564,6 +623,8 @@ function openArtifact(artifactId) {
 
 function removeProject(projectId) {
   const target = state.projects.find((project) => project.id === projectId) || null;
+  const name = target ? target.name : 'this project';
+  if (!window.confirm('Remove "' + name + '"?\nThis deletes the project and its Drive folder and cannot be undone.')) return;
   state.projects = state.projects.filter((project) => project.id !== projectId);
   if (state.selectedProjectId === projectId) {
     state.selectedProjectId = null;
@@ -712,6 +773,14 @@ function wireInbox() {
     });
   }
 
+  const linkFilter = byId('link-filter');
+  if (linkFilter) {
+    linkFilter.addEventListener('change', () => {
+      state.activeLinkFilter = linkFilter.value || 'all';
+      render();
+    });
+  }
+
   const playlistFilter = byId('playlist-filter');
   if (playlistFilter) {
     playlistFilter.addEventListener('change', () => {
@@ -730,7 +799,13 @@ function wireInbox() {
 
   const list = byId('inbox-list');
   if (list) {
-    list.addEventListener('click', (event) => {
+    list.addEventListener('click', async (event) => {
+      const removeBtn = event.target.closest('[data-inbox-remove]');
+      if (removeBtn) {
+        const row = removeBtn.closest('[data-inbox-item]');
+        if (row) await handleInboxRemove(row);
+        return;
+      }
       const row = event.target.closest('[data-inbox-item]');
       if (!row) return;
       if (row.dataset.existingProject) {
@@ -743,6 +818,31 @@ function wireInbox() {
         showToast('Could not open this item.');
       }
     });
+  }
+}
+
+// Delete an inbox item at its source (Google Tasks / YouTube) after confirmation.
+async function handleInboxRemove(row) {
+  let item;
+  try {
+    item = JSON.parse(row.dataset.inboxItem);
+  } catch {
+    showToast('Could not read this item.');
+    return;
+  }
+  const sourceId = state.activeSource;
+  const prompt = sourceId === 'youtube_review_later'
+    ? 'Remove this video from your YouTube playlist?'
+    : 'Delete this task from Google Tasks?';
+  if (!window.confirm(prompt + '\nThis cannot be undone.')) return;
+  showBusy('Removing…');
+  try {
+    await removeInboxItem(sourceId, item);
+    showToast('Removed.');
+  } catch (error) {
+    showToast(error.message || 'Could not remove this item.');
+  } finally {
+    hideBusy();
   }
 }
 
@@ -776,11 +876,6 @@ function wireProjects() {
         render();
         return;
       }
-      const remove = event.target.closest('[data-remove-project]');
-      if (remove) {
-        removeProject(remove.dataset.removeProject);
-        return;
-      }
       const openBtn = event.target.closest('[data-project-id]');
       if (openBtn) openProject(openBtn.dataset.projectId);
     });
@@ -801,6 +896,11 @@ function wireProjects() {
         state.selectedProjectId = null;
         state.editingOverview = false;
         render();
+        return;
+      }
+      const removeInDetail = event.target.closest('[data-remove-project]');
+      if (removeInDetail) {
+        removeProject(removeInDetail.dataset.removeProject);
         return;
       }
       if (event.target.closest('[data-edit-overview]')) {

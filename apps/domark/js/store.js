@@ -9,6 +9,7 @@ export const state = {
   activeDateFilter: 'all',
   activePlaylist: 'all',
   activeList: 'all',
+  activeLinkFilter: 'all',
   profile: null,
   token: null,
   projects: [],

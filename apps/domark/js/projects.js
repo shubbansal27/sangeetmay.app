@@ -123,8 +123,6 @@ function projectList() {
         '</div>' +
         '<span class="proj-card__foot">Created ' + escapeHtml(formatRelative(project.createdAt)) + '</span>' +
         '</button>' +
-        '<button class="btn btn--ghost proj-card__remove" type="button" data-remove-project="' +
-        escapeHtml(project.id) + '">Remove</button>' +
         '</div>'
       );
     })
@@ -329,6 +327,7 @@ function workspace(project) {
     '</div>' +
     '<div class="workspace-head__actions">' +
     '<button class="btn btn--ghost" type="button" data-project-back>← Back</button>' +
+    '<button class="btn btn--ghost workspace-head__remove" type="button" data-remove-project="' + escapeHtml(project.id) + '">Remove</button>' +
     '</div>' +
     '</div>' +
     '<div class="wtabs">' + tabs + '</div>' +

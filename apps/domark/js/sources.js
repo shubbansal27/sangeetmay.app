@@ -4,7 +4,6 @@ import { SOURCES, YOUTUBE_PLAYLIST_TITLE } from './config.js';
 import { state } from './store.js';
 import { formatRelative } from './utils.js';
 import { renderInbox } from './inbox.js';
-import { recordBookmarksSeen } from './drive.js';
 import { isSourceEnabled, getYouTubePlaylistIds } from './settings.js';
 
 const TASKS_API = 'https://tasks.googleapis.com/tasks/v1';
@@ -69,6 +68,8 @@ function mapTask(task, list) {
     source: 'Google Tasks',
     tag: listTitle,
     list: listTitle,
+    listId: list.id,
+    taskId: task.id,
     title: task.title || '(Untitled task)',
     body: notesSnippet,
     addedAt,
@@ -144,6 +145,7 @@ function mapPlaylistItem(item, playlistTitle) {
     source: 'YouTube',
     tag: listName,
     playlist: listName,
+    playlistItemId: item?.id || '',
     title,
     body: descSnippet || channel,
     addedAt,
@@ -243,6 +245,36 @@ const LOADERS = {
   youtube_review_later: fetchYouTube,
 };
 
+// Permanently remove an inbox item at its source (Google Tasks task or YouTube playlist item), then drop it from the cache.
+export async function removeInboxItem(sourceId, item) {
+  if (!state.token || !item) return;
+  const headers = { Authorization: 'Bearer ' + state.token };
+  if (sourceId === 'google_tasks') {
+    if (!item.listId || !item.taskId) throw new Error('This task is missing the ids needed to delete it.');
+    const res = await fetch(
+      TASKS_API + '/lists/' + encodeURIComponent(item.listId) + '/tasks/' + encodeURIComponent(item.taskId),
+      { method: 'DELETE', headers }
+    );
+    if (!res.ok && res.status !== 404) throw new Error('Could not delete this task from Google Tasks.');
+  } else if (sourceId === 'youtube_review_later') {
+    if (!item.playlistItemId) throw new Error('This video is missing the id needed to remove it.');
+    const res = await fetch(YOUTUBE_API + '/playlistItems?id=' + encodeURIComponent(item.playlistItemId), {
+      method: 'DELETE',
+      headers,
+    });
+    if (!res.ok && res.status !== 404) throw new Error('Could not remove this video from your YouTube playlist.');
+  } else {
+    return;
+  }
+  const slice = sourceState(sourceId);
+  slice.items = slice.items.filter((entry) => {
+    if (sourceId === 'google_tasks') return entry.taskId !== item.taskId;
+    if (sourceId === 'youtube_review_later') return entry.playlistItemId !== item.playlistItemId;
+    return entry.refId !== item.refId;
+  });
+  renderInbox();
+}
+
 export function activeSource() {
   return SOURCES.find((source) => source.id === state.activeSource) || SOURCES[0];
 }
@@ -282,7 +314,6 @@ async function loadSource(sourceId, { force = false } = {}) {
     slice.status = 'ready';
     slice.error = '';
     slice.fetchedAt = Date.now();
-    if (items.length) recordBookmarksSeen(sourceId, items).catch(() => {});
   } catch (error) {
     slice.status = slice.items.length ? 'ready' : 'error';
     slice.error = error.message || 'Could not sync this source.';

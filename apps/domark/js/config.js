@@ -11,10 +11,9 @@ export const STORAGE_KEYS = {
   profile: 'domark_google_profile',
   projects: 'domark_projects',
   driveRoot: 'domark_drive_root_id',
+  driveProfilesFolder: 'domark_drive_profiles_id',
   driveProfile: 'domark_drive_profile_id',
   driveProjects: 'domark_drive_projects_id',
-  driveInsights: 'domark_drive_insights_id',
-  insightsCache: 'domark_insights_state',
   activeProfile: 'domark_active_profile',
   profiles: 'domark_profiles',
   announcementsSeen: 'domark_announcements_seen',
@@ -26,12 +25,10 @@ export const DRIVE = {
   rootFolder: 'domark',
   defaultProfile: 'default',
   profilesFile: 'profiles.json',
+  profilesFolder: 'profiles',
   projectsFolder: 'projects',
   indexFile: 'projects.json',
   projectFile: 'project.json',
-  artifactsFile: 'artifacts.json',
-  insightsFolder: 'insights',
-  insightsState: 'state.json',
   settingsFile: 'settings.json',
 };
 
@@ -43,12 +40,12 @@ export const SOURCES = [
   {
     id: 'google_tasks',
     label: 'Google Tasks',
-    scope: 'https://www.googleapis.com/auth/tasks.readonly',
+    scope: 'https://www.googleapis.com/auth/tasks',
   },
   {
     id: 'youtube_review_later',
     label: 'YouTube',
-    scope: 'https://www.googleapis.com/auth/youtube.readonly',
+    scope: 'https://www.googleapis.com/auth/youtube',
   },
 ];
 
