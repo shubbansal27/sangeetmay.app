@@ -128,7 +128,8 @@ function mapPlaylistItem(item, playlistTitle) {
   const channel = snippet.videoOwnerChannelTitle || snippet.channelTitle || 'Unknown channel';
   const description = typeof snippet.description === 'string' ? snippet.description.trim() : '';
   const descSnippet = description.length > 140 ? description.slice(0, 137) + '…' : description;
-  const addedAt = snippet.publishedAt || item?.contentDetails?.videoPublishedAt || null;
+  // snippet.publishedAt is when the item was added to the playlist; videoPublishedAt is the channel's upload date, so never use it here.
+  const addedAt = snippet.publishedAt || null;
   const watchUrl = videoId ? 'https://www.youtube.com/watch?v=' + encodeURIComponent(videoId) : '';
   const listName = playlistTitle || 'YouTube';
 

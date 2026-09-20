@@ -13,6 +13,8 @@ let startedAt = 0;
 let timerId = null;
 let resolver = null;
 let captureMode = 'camera';
+// Per-mode default names, provided when the recorder opens.
+let defaultTitles = { camera: 'Recording', screen: 'Recording' };
 
 function pickMimeType() {
   const candidates = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
@@ -166,6 +168,14 @@ async function setMode(mode) {
   if (mode === captureMode && stream) return;
   captureMode = mode;
   updateModeButtons();
+  // Swap the default name to match the mode, unless the user customised it.
+  const titleInput = byId('rec-title');
+  if (titleInput) {
+    const current = titleInput.value.trim();
+    if (current === '' || current === defaultTitles.camera || current === defaultTitles.screen) {
+      titleInput.value = defaultTitles[mode];
+    }
+  }
   stopStream();
   resetUi();
   setStatus(mode === 'screen' ? 'Choose a screen or window to share.' : 'Enable your camera to begin.');
@@ -270,14 +280,18 @@ export function closeRecorder() {
   finish(null);
 }
 
-export function openRecorder() {
+export function openRecorder(titles = {}) {
   const modal = byId('recorder-modal');
   if (!modal) return Promise.resolve(null);
+  defaultTitles = {
+    camera: titles.camera || 'Recording',
+    screen: titles.screen || 'Recording',
+  };
   captureMode = 'camera';
   updateModeButtons();
   resetUi();
   const title = byId('rec-title');
-  if (title) title.value = '';
+  if (title) title.value = defaultTitles.camera;
   setStatus('Enable your camera to begin.');
   modal.classList.add('is-open');
   modal.setAttribute('aria-hidden', 'false');

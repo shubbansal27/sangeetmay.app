@@ -476,6 +476,27 @@ async function saveArtifacts(project, artifacts) {
   return normalized;
 }
 
+// Remove one artifact from a project; trash its backing Drive file for Docs/diagrams (recordings/links have none).
+export async function deleteArtifact(project, artifactId) {
+  const artifacts = Array.isArray(project.artifacts) ? project.artifacts : [];
+  const target = artifacts.find((entry) => String(entry.id) === String(artifactId));
+  const remaining = artifacts.filter((entry) => String(entry.id) !== String(artifactId));
+  await saveArtifacts(project, remaining);
+  const hasDriveFile = target && target.fileId && (target.type === 'drawio' || ARTIFACT_TYPES[target.type]?.mimeType);
+  if (hasDriveFile && state.token) {
+    try {
+      await driveFetch(DRIVE_FILES + '/' + target.fileId, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trashed: true }),
+      });
+    } catch {
+      /* non-fatal; the artifact is already gone from the project */
+    }
+  }
+  return project.artifacts;
+}
+
 async function createDiagramFile(project, title, artifactId) {
   const slug = slugify(title) || 'design-board';
   const fileName = slug + '-' + artifactId.slice(0, 8) + '.drawio';
@@ -523,10 +544,9 @@ async function createDiagramFile(project, title, artifactId) {
   };
 }
 
-// Opens the specific Drive file for in-place editing (draw.io Google Drive mode).
-// Each file has a unique id, so every board opens and saves to its own file.
+// Open the draw.io file via its Google Drive link so it launches under the owning account (then "Open with diagrams.net").
 function diagramEditorUrl(fileId) {
-  return 'https://app.diagrams.net/#G' + fileId;
+  return 'https://drive.google.com/file/d/' + fileId + '/view?usp=drive_link';
 }
 
 async function createGoogleFile(project, title, artifactId, type) {

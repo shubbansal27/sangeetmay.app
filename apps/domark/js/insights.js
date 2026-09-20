@@ -101,45 +101,49 @@ function projectCompletedEvents() {
     .map((project) => ({ at: project.completedAt || project.createdAt, projectId: project.id }));
 }
 
-// Waiting now: current inbox items (enabled sources) not yet turned into a project. Pure live snapshot.
-function computeWaitingLive() {
+// Unique current inbox items across enabled sources (carry source + list/playlist tag + addedAt).
+function bookmarkItems() {
+  const seen = new Set();
+  const items = [];
+  enabledSourceIds().forEach((id) => {
+    const slice = sourceState(id);
+    (slice.items || []).forEach((item) => {
+      const ref = item.refId;
+      if (!ref || seen.has(ref)) return;
+      seen.add(ref);
+      items.push(item);
+    });
+  });
+  return items;
+}
+
+// Bookmarks not yet turned into a project.
+function waitingItems() {
   const mapped = new Set();
   state.projects.forEach((project) => {
     const ref = (project.bookmark && project.bookmark.refId) || project.bookmarkRef;
     if (ref) mapped.add(ref);
   });
-  const STALE_MS = 30 * DAY_MS;
-  const seen = new Set();
-  let waiting = 0;
-  let stale = 0;
-  enabledSourceIds().forEach((id) => {
-    const slice = sourceState(id);
-    (slice.items || []).forEach((item) => {
-      const ref = item.refId;
-      if (!ref || seen.has(ref) || mapped.has(ref)) return;
-      seen.add(ref);
-      waiting += 1;
-      const t = item.addedAt ? new Date(item.addedAt).getTime() : NaN;
-      if (!Number.isNaN(t) && Date.now() - t > STALE_MS) stale += 1;
-    });
-  });
-  return { waiting, stale };
+  return bookmarkItems().filter((item) => !mapped.has(item.refId));
 }
 
-// Timeline source: when the current bookmarks were saved, from each item's source addedAt (unique by refId).
-function bookmarkEvents() {
-  const seen = new Set();
-  const events = [];
-  enabledSourceIds().forEach((id) => {
-    const slice = sourceState(id);
-    (slice.items || []).forEach((item) => {
-      const ref = item.refId;
-      if (!ref || seen.has(ref) || !item.addedAt) return;
-      seen.add(ref);
-      events.push({ at: item.addedAt });
-    });
+// Waiting-now count + how many have been sitting over 30 days. Pure live snapshot.
+function computeWaitingLive() {
+  const STALE_MS = 30 * DAY_MS;
+  const items = waitingItems();
+  let stale = 0;
+  items.forEach((item) => {
+    const t = item.addedAt ? new Date(item.addedAt).getTime() : NaN;
+    if (!Number.isNaN(t) && Date.now() - t > STALE_MS) stale += 1;
   });
-  return events;
+  return { waiting: items.length, stale };
+}
+
+// Timeline events: when current bookmarks were saved, tagged by source for stacking.
+function bookmarkEvents() {
+  return bookmarkItems()
+    .filter((item) => item.addedAt)
+    .map((item) => ({ at: item.addedAt, source: item.source || 'Other' }));
 }
 
 // Age (days from today) of each unassigned bookmark, bucketed to show how long saves are piling up.
@@ -152,24 +156,24 @@ const AGE_BUCKETS = [
 ];
 
 function waitingAges() {
-  const mapped = new Set();
-  state.projects.forEach((project) => {
-    const ref = (project.bookmark && project.bookmark.refId) || project.bookmarkRef;
-    if (ref) mapped.add(ref);
+  return waitingItems().map((item) => {
+    const t = item.addedAt ? new Date(item.addedAt).getTime() : NaN;
+    return Number.isNaN(t) ? 0 : Math.max(0, Math.floor((Date.now() - t) / DAY_MS));
   });
-  const seen = new Set();
-  const ages = [];
-  enabledSourceIds().forEach((id) => {
-    const slice = sourceState(id);
-    (slice.items || []).forEach((item) => {
-      const ref = item.refId;
-      if (!ref || seen.has(ref) || mapped.has(ref)) return;
-      seen.add(ref);
-      const t = item.addedAt ? new Date(item.addedAt).getTime() : NaN;
-      ages.push(Number.isNaN(t) ? 0 : Math.max(0, Math.floor((Date.now() - t) / DAY_MS)));
-    });
+}
+
+// Count items by a key into colored donut segments.
+function distribution(items, keyFn, fallback = 'Other') {
+  const counts = new Map();
+  items.forEach((item) => {
+    const key = String(keyFn(item) || fallback).trim() || fallback;
+    counts.set(key, (counts.get(key) || 0) + 1);
   });
-  return ages;
+  return [...counts.keys()].map((name, i) => ({
+    name,
+    count: counts.get(name),
+    color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+  }));
 }
 
 function donut(segments) {
@@ -222,30 +226,55 @@ function piePanel(segments) {
 function statButton(id, value, title, sub, open) {
   return (
     '<button class="ins-stat ins-stat--btn' + (open ? ' is-open' : '') + '" type="button" data-pie="' + id + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
-    '<span class="ins-stat__caret" aria-hidden="true">▾</span>' +
     '<span class="ins-stat__value">' + escapeHtml(String(value)) + '</span>' +
     '<span class="ins-stat__label">' + escapeHtml(title) + '</span>' +
     '<span class="ins-stat__sub">' + escapeHtml(sub) + '</span>' +
+    '<span class="ins-stat__more">' + (open ? 'Hide breakdown' : 'By category') +
+    ' <span class="ins-stat__morecaret" aria-hidden="true">▾</span></span>' +
     '</button>'
   );
 }
 
-function waitingStat(w) {
+function waitingStat(w, active) {
   const note = w.stale ? w.stale + ' waiting over 30 days' : 'Nothing piling up';
   return (
-    '<div class="ins-stat ins-stat--wait">' +
+    '<button class="ins-stat ins-stat--wait ins-stat--btn' + (active ? ' is-open' : '') + '" type="button" data-pie="bookmarks" aria-expanded="' + (active ? 'true' : 'false') + '">' +
     '<span class="ins-stat__value">' + w.waiting + '</span>' +
     '<span class="ins-stat__label">Bookmarks waiting</span>' +
     '<span class="ins-stat__sub">' + escapeHtml(note) + '</span>' +
+    '<span class="ins-stat__more">' + (active ? 'Hide breakdown' : 'By source & list') +
+    ' <span class="ins-stat__morecaret" aria-hidden="true">▾</span></span>' +
+    '</button>'
+  );
+}
+
+// A titled donut used for the bookmark source / list breakdown.
+function distributionPanel(title, segments) {
+  return (
+    '<div class="ins-pie-titled">' +
+    '<h4 class="ins-pie-titled__h">' + escapeHtml(title) + '</h4>' +
+    piePanel(segments) +
     '</div>'
   );
 }
 
-function bookmarksSection(waiting, rangeId) {
+function bookmarksSection(waiting, rangeId, active) {
+  const open = active === 'bookmarks';
+  let breakdown = '';
+  if (open) {
+    // Break down all current bookmarks (not just waiting) so every source/list shows up.
+    const items = bookmarkItems();
+    breakdown =
+      '<div class="ins-pie-row">' +
+      distributionPanel('By source', distribution(items, (it) => it.source)) +
+      distributionPanel('By list / playlist', distribution(items, (it) => it.tag || it.list || it.playlist)) +
+      '</div>';
+  }
   return (
     '<section class="ins-group">' +
     '<h3 class="ins-group__title">Bookmarks</h3>' +
-    '<div class="ins-hero ins-hero--1">' + waitingStat(waiting) + '</div>' +
+    '<div class="ins-hero ins-hero--1">' + waitingStat(waiting, open) + '</div>' +
+    breakdown +
     bookmarkTimelineBlock(bookmarkEvents(), rangeId) +
     pendingAgeBlock(waitingAges()) +
     '</section>'
@@ -274,7 +303,7 @@ function pendingAgeBlock(ages) {
   });
   return (
     '<div class="panel-block">' +
-    '<div class="panel-block__head"><h3>Pending age</h3>' +
+    '<div class="panel-block__head"><h3>How long saves have been waiting</h3>' +
     '<span class="ins-legend"><span class="ins-legend__key ins-legend__key--saved"></span>Waiting</span></div>' +
     '<div class="ins-chart">' + columns + '</div>' +
     '</div>'
@@ -371,28 +400,42 @@ function trendBlock(created, completed, rangeId) {
   );
 }
 
-// Single-series timeline of bookmarks saved over the selected range.
+// Grouped bars per bucket, one per source, so the timeline shows source distribution over time.
 function bookmarkTimelineBlock(events, rangeId) {
   const plan = trendPlan(rangeId, events);
-  const byBucket = bucketize(events, plan);
-  const max = Math.max(1, ...byBucket);
+  const present = [...new Set(events.map((event) => event.source || 'Other'))];
+  const order = present.length ? present : ['Google Tasks', 'YouTube'];
+  const series = order.map((name, i) => ({
+    name,
+    color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+    buckets: bucketize(events.filter((event) => (event.source || 'Other') === name), plan),
+  }));
+  const max = Math.max(1, ...series.flatMap((s) => s.buckets));
   let columns = '';
   for (let i = 0; i < plan.count; i += 1) {
-    const count = byBucket[i];
-    const h = Math.round((count / max) * 100);
     const label = bucketLabel(plan.start + i * plan.step, plan.unit);
+    let total = 0;
+    const bars = series
+      .map((s) => {
+        const count = s.buckets[i];
+        total += count;
+        const h = Math.round((count / max) * 100);
+        return '<div class="ins-col__bar" style="height:' + h + '%;background:' + s.color + '"></div>';
+      })
+      .join('');
     columns +=
-      '<div class="ins-col" title="' + escapeHtml(label + ': ' + count + ' saved') + '">' +
-      '<div class="ins-col__track">' +
-      '<div class="ins-col__bar ins-col__bar--saved" style="height:' + h + '%"></div>' +
-      '</div>' +
+      '<div class="ins-col" title="' + escapeHtml(label + ': ' + total + ' saved') + '">' +
+      '<div class="ins-col__track">' + bars + '</div>' +
       '<span class="ins-col__x">' + escapeHtml(label) + '</span>' +
       '</div>';
   }
+  const legend = series
+    .map((s) => '<span class="ins-legend__key" style="background:' + s.color + '"></span>' + escapeHtml(s.name))
+    .join('');
   return (
     '<div class="panel-block">' +
     '<div class="panel-block__head"><h3>Bookmark timeline</h3>' +
-    '<span class="ins-legend"><span class="ins-legend__key ins-legend__key--saved"></span>Saved</span></div>' +
+    '<span class="ins-legend">' + legend + '</span></div>' +
     '<div class="ins-chart">' + columns + '</div>' +
     '</div>'
   );
@@ -414,7 +457,7 @@ function dashboard(rangeId) {
   const catMap = projectCategoryMap();
   return (
     rangeBar(rangeId) +
-    bookmarksSection(waiting, rangeId) +
+    bookmarksSection(waiting, rangeId, activePie) +
     projectsSection(createdInRange, completedInRange, created, completed, catMap, rangeId, activePie)
   );
 }

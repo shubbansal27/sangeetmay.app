@@ -12,7 +12,7 @@ function defaults() {
   SOURCES.forEach((source) => {
     sources[source.id] = true;
   });
-  return { version: 1, sources, youtube: { playlistIds: [] } };
+  return { version: 1, sources, youtube: { playlistIds: [] }, categories: [] };
 }
 
 function normalize(raw) {
@@ -24,6 +24,9 @@ function normalize(raw) {
   }
   if (raw && raw.youtube && Array.isArray(raw.youtube.playlistIds)) {
     base.youtube.playlistIds = raw.youtube.playlistIds.filter((id) => typeof id === 'string');
+  }
+  if (raw && Array.isArray(raw.categories)) {
+    base.categories = raw.categories.filter((name) => typeof name === 'string' && name.trim()).map((name) => name.trim());
   }
   return base;
 }
@@ -52,18 +55,16 @@ export function getSettings() {
   return cache;
 }
 
-// Fetch settings from Drive (falls back to the local cache/defaults offline).
+// Drive is the source of truth: adopt remote settings, or reset to defaults when Drive has none.
 export async function loadSettings() {
   getSettings();
   if (!state.token) return cache;
   try {
     const remote = await loadSettingsFile();
-    if (remote) {
-      cache = normalize(remote);
-      persistLocal();
-    }
+    cache = remote ? normalize(remote) : defaults();
+    persistLocal();
   } catch {
-    /* keep local cache */
+    /* Drive unreachable (offline): keep the local cache */
   }
   return cache;
 }
@@ -104,5 +105,16 @@ export async function setSourceEnabled(id, enabled) {
 
 export async function setYouTubePlaylistIds(ids) {
   const next = { ...getSettings(), youtube: { playlistIds: Array.isArray(ids) ? ids : [] } };
+  return save(next);
+}
+
+export function getCustomCategories() {
+  return getSettings().categories.slice();
+}
+
+export async function addCustomCategory(name) {
+  const current = getSettings().categories;
+  if (current.includes(name)) return cache;
+  const next = { ...getSettings(), categories: [...current, name] };
   return save(next);
 }
