@@ -63,21 +63,23 @@ function multipartBody(boundary, metadata, contentType, content) {
 async function writeJsonFile({ name, parentId, existingId, data, errorLabel }) {
   const body = JSON.stringify(data, null, 2);
   if (existingId) {
-    const response = await driveFetch(DRIVE_UPLOAD + '/' + existingId + '?uploadType=media', {
+    const response = await driveFetch(DRIVE_UPLOAD + '/' + existingId + '?uploadType=media&fields=id', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body,
     });
     if (!response.ok) throw new Error(errorLabel);
-    return;
+    return existingId;
   }
   const boundary = 'domark_boundary';
-  const response = await driveFetch(DRIVE_UPLOAD + '?uploadType=multipart', {
+  const response = await driveFetch(DRIVE_UPLOAD + '?uploadType=multipart&fields=id', {
     method: 'POST',
     headers: { 'Content-Type': 'multipart/related; boundary="' + boundary + '"' },
     body: multipartBody(boundary, { name, mimeType: 'application/json', parents: [parentId] }, 'application/json', body),
   });
   if (!response.ok) throw new Error(errorLabel);
+  const created = await response.json().catch(() => null);
+  return created ? created.id : null;
 }
 
 async function ensureFolder(name, parentId = null) {
@@ -113,57 +115,80 @@ async function folderExists(id) {
   return Boolean(data && data.trashed !== true);
 }
 
-async function ensureStructure() {
+// In-flight structure resolution, shared by concurrent callers so folders are never created twice.
+let structurePromise = null;
+
+// Layout: domark/profiles/<profile>/projects/ and .../insights/ — uniform for every profile, default included.
+async function resolveStructure() {
   const profile = getActiveProfile();
-  const isDefault = profile === DRIVE.defaultProfile;
   let rootFolderId = localStorage.getItem(STORAGE_KEYS.driveRoot);
-  let profileFolderId = isDefault ? rootFolderId : localStorage.getItem(profileKey(STORAGE_KEYS.driveProfile));
+  let profilesFolderId = localStorage.getItem(STORAGE_KEYS.driveProfilesFolder);
+  let profileFolderId = localStorage.getItem(profileKey(STORAGE_KEYS.driveProfile));
   let projectsFolderId = localStorage.getItem(profileKey(STORAGE_KEYS.driveProjects));
-  // Once per session, verify cached ids so we never read/write into folders deleted in Drive.
+
+  // Once per session, verify cached ids top-down so we never read/write into folders deleted in Drive.
   if (!structureVerified && state.token) {
-    const rootOk = rootFolderId ? await folderExists(rootFolderId) : false;
-    if (!rootOk) {
-      rootFolderId = null;
-      profileFolderId = null;
+    if (rootFolderId && !(await folderExists(rootFolderId))) {
+      rootFolderId = profilesFolderId = profileFolderId = projectsFolderId = null;
+    }
+    if (profilesFolderId && !(await folderExists(profilesFolderId))) {
+      profilesFolderId = profileFolderId = projectsFolderId = null;
+    }
+    if (profileFolderId && !(await folderExists(profileFolderId))) {
+      profileFolderId = projectsFolderId = null;
+    }
+    if (projectsFolderId && !(await folderExists(projectsFolderId))) {
       projectsFolderId = null;
-    } else {
-      if (!isDefault && profileFolderId && !(await folderExists(profileFolderId))) {
-        profileFolderId = null;
-        projectsFolderId = null;
-      }
-      if (projectsFolderId && !(await folderExists(projectsFolderId))) {
-        projectsFolderId = null;
-      }
     }
     structureVerified = true;
   }
+
   if (!rootFolderId) {
     rootFolderId = await ensureFolder(DRIVE.rootFolder);
     localStorage.setItem(STORAGE_KEYS.driveRoot, rootFolderId);
   }
-  if (isDefault) {
-    profileFolderId = rootFolderId;
-  } else if (!profileFolderId) {
-    profileFolderId = await ensureFolder(profile, rootFolderId);
+  if (!profilesFolderId) {
+    profilesFolderId = await ensureFolder(DRIVE.profilesFolder, rootFolderId);
+    localStorage.setItem(STORAGE_KEYS.driveProfilesFolder, profilesFolderId);
+  }
+  if (!profileFolderId) {
+    profileFolderId = await ensureFolder(profile, profilesFolderId);
     localStorage.setItem(profileKey(STORAGE_KEYS.driveProfile), profileFolderId);
   }
   if (!projectsFolderId) {
     projectsFolderId = await ensureFolder(DRIVE.projectsFolder, profileFolderId);
     localStorage.setItem(profileKey(STORAGE_KEYS.driveProjects), projectsFolderId);
   }
-  return { rootFolderId: profileFolderId, projectsFolderId };
+  return { rootFolderId, profilesFolderId, profileFolderId, projectsFolderId };
+}
+
+// Memoized: concurrent boot tasks await the same resolution instead of each creating folders.
+function ensureStructure() {
+  if (!structurePromise) {
+    structurePromise = resolveStructure().catch((error) => {
+      structurePromise = null; // allow a retry after a transient failure
+      throw error;
+    });
+  }
+  return structurePromise;
 }
 
 // Drop in-memory caches so the next Drive access re-resolves folders for the newly active profile.
 export function resetProfileCaches() {
-  insightsCache = null;
   structureVerified = false;
+  structurePromise = null;
 }
 
-// The profiles list lives at the shared domark root (not inside a profile folder).
+// The profiles registry lives at the domark root (outside the profiles/ folder).
 async function domarkRootId() {
   await ensureStructure();
   return localStorage.getItem(STORAGE_KEYS.driveRoot);
+}
+
+// Resolve the shared domark/profiles folder (where each profile folder lives).
+async function profilesFolderId() {
+  await ensureStructure();
+  return localStorage.getItem(STORAGE_KEYS.driveProfilesFolder);
 }
 
 export async function loadProfilesList() {
@@ -189,18 +214,18 @@ export async function saveProfilesList(profiles) {
 
 // Per-profile settings.json lives in the active profile folder.
 export async function loadSettingsFile() {
-  const { rootFolderId } = await ensureStructure();
-  const existing = await findFile(DRIVE.settingsFile, rootFolderId);
+  const { profileFolderId } = await ensureStructure();
+  const existing = await findFile(DRIVE.settingsFile, profileFolderId);
   if (!existing) return null;
   return readJsonFile(existing.id);
 }
 
 export async function saveSettingsFile(data) {
-  const { rootFolderId } = await ensureStructure();
-  const existing = await findFile(DRIVE.settingsFile, rootFolderId);
+  const { profileFolderId } = await ensureStructure();
+  const existing = await findFile(DRIVE.settingsFile, profileFolderId);
   await writeJsonFile({
     name: DRIVE.settingsFile,
-    parentId: rootFolderId,
+    parentId: profileFolderId,
     existingId: existing ? existing.id : null,
     data,
     errorLabel: 'Could not save settings to Google Drive.',
@@ -220,12 +245,12 @@ async function findFolder(name, parentId) {
   return data && data.files && data.files[0] ? data.files[0] : null;
 }
 
-// Trash a named profile's Drive folder (never the shared default root).
+// Trash a named profile's Drive folder (domark/profiles/<name>).
 export async function deleteProfileFolder(name) {
   if (!state.token || !name || name === DRIVE.defaultProfile) return;
-  const rootId = await domarkRootId();
-  if (!rootId) return;
-  const folder = await findFolder(name, rootId);
+  const parentId = await profilesFolderId();
+  if (!parentId) return;
+  const folder = await findFolder(name, parentId);
   if (!folder) return;
   await driveFetch(DRIVE_FILES + '/' + folder.id, {
     method: 'PATCH',
@@ -234,9 +259,30 @@ export async function deleteProfileFolder(name) {
   });
 }
 
+// Wipe the active profile's data in place (projects folder + index, insights, settings) while keeping the profile itself.
+export async function resetProfileData() {
+  if (!state.token) return;
+  const { profileFolderId } = await ensureStructure();
+  if (!profileFolderId) return;
+  const trash = (id) =>
+    driveFetch(DRIVE_FILES + '/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trashed: true }),
+    });
+  // The projects folder holds both the index and every project folder, so trashing it clears them together.
+  const projects = await findFolder(DRIVE.projectsFolder, profileFolderId);
+  if (projects) await trash(projects.id);
+  const settings = await findFile(DRIVE.settingsFile, profileFolderId);
+  if (settings) await trash(settings.id);
+  // Drop cached folder ids so the next Drive access recreates a fresh, empty structure.
+  localStorage.removeItem(profileKey(STORAGE_KEYS.driveProjects));
+  resetProfileCaches();
+}
+
 async function loadProjectIndex() {
-  const { rootFolderId } = await ensureStructure();
-  const existing = await findFile(DRIVE.indexFile, rootFolderId);
+  const { projectsFolderId } = await ensureStructure();
+  const existing = await findFile(DRIVE.indexFile, projectsFolderId);
   if (!existing) {
     const emptyIndex = { version: 1, projects: [] };
     await saveProjectIndex(emptyIndex);
@@ -247,48 +293,59 @@ async function loadProjectIndex() {
 }
 
 async function saveProjectIndex(index) {
-  const { rootFolderId } = await ensureStructure();
-  const existing = await findFile(DRIVE.indexFile, rootFolderId);
+  const { projectsFolderId } = await ensureStructure();
+  const existing = await findFile(DRIVE.indexFile, projectsFolderId);
   await writeJsonFile({
     name: DRIVE.indexFile,
-    parentId: rootFolderId,
+    parentId: projectsFolderId,
     existingId: existing ? existing.id : null,
     data: index,
     errorLabel: 'Could not save the Domark project index to Google Drive.',
   });
 }
 
+// One file per project holds both its metadata and artifacts, so opening a project is a single read.
 async function saveProjectMetadata(project) {
-  const existing = await findFile(DRIVE.projectFile, project.folderId);
-  // Artifacts are the responsibility of artifacts.json; keep them out of project.json to avoid divergence.
-  const rest = { ...project };
-  delete rest.artifacts;
-  await writeJsonFile({
+  let existingId = project.fileId || null;
+  // Resolve the existing file once (by id if known, else by name) so we never create a duplicate project.json.
+  if (!existingId) {
+    const existing = await findFile(DRIVE.projectFile, project.folderId);
+    if (existing) existingId = existing.id;
+  }
+  const record = { ...project };
+  delete record.fileId;
+  const fileId = await writeJsonFile({
     name: DRIVE.projectFile,
     parentId: project.folderId,
-    existingId: existing ? existing.id : null,
-    data: rest,
+    existingId,
+    data: record,
     errorLabel: 'Could not save project metadata in Google Drive.',
   });
+  if (fileId) project.fileId = fileId;
+  return fileId;
 }
 
 export async function saveProjectStatus(project) {
   if (!state.token) throw new Error('Please sign in to sync project status to Google Drive.');
 
+  // Write project.json first so project.fileId is known, then mirror it into the index entry.
+  await saveProjectMetadata(project);
   const index = await loadProjectIndex();
   const entry = index.projects.find((item) => item.id === project.id);
   if (entry) {
     entry.status = project.status;
     entry.progress = project.progress;
+    entry.completedAt = project.completedAt;
+    entry.fileId = project.fileId;
     await saveProjectIndex(index);
   }
-  await saveProjectMetadata(project);
 }
 
 // Persist edited overview fields (name, category, description, tags) to the index and project file.
 export async function saveProjectDetails(project) {
   if (!state.token) throw new Error('Please sign in to sync project changes to Google Drive.');
 
+  await saveProjectMetadata(project);
   const index = await loadProjectIndex();
   const entry = index.projects.find((item) => item.id === project.id);
   if (entry) {
@@ -299,17 +356,15 @@ export async function saveProjectDetails(project) {
     entry.tags = project.tags;
     entry.status = project.status;
     entry.progress = project.progress;
+    entry.completedAt = project.completedAt;
+    entry.fileId = project.fileId;
     await saveProjectIndex(index);
   }
-  await saveProjectMetadata(project);
 }
 
 // Read a project's full record (project.json) — used to lazily restore its source bookmark.
 export async function loadProjectMetadata(project) {
-  if (!state.token || !project || !project.folderId) return null;
-  const existing = await findFile(DRIVE.projectFile, project.folderId);
-  if (!existing) return null;
-  return readJsonFile(existing.id);
+  return readProjectFile(project);
 }
 
 // Rebuild state.projects from the Drive index so projects survive across devices / cleared storage.
@@ -330,11 +385,13 @@ export async function hydrateProjects() {
       name: entry.name,
       slug: entry.slug,
       folderId: entry.folderId,
+      fileId: entry.fileId || (local && local.fileId) || null,
       description: entry.description || '',
       category: entry.category || 'Others',
       tags: Array.isArray(entry.tags) ? entry.tags : [],
       status: entry.status || 'In progress',
       progress: Number.isFinite(entry.progress) ? entry.progress : local?.progress ?? 0,
+      completedAt: entry.completedAt || (local && local.completedAt) || null,
       createdAt: entry.createdAt || local?.createdAt || new Date().toISOString(),
       bookmarkRef: entry.bookmarkRef || (local && local.bookmarkRef) || null,
       // undefined = not yet loaded (lazy-load project.json on open); null = confirmed no bookmark.
@@ -392,30 +449,30 @@ export function normalizeArtifact(artifact, project, fallbackName = 'Design boar
   };
 }
 
+// Read a project's project.json directly by its cached file id, falling back to a one-time name lookup.
+async function readProjectFile(project) {
+  if (!project || !project.folderId) return null;
+  let fileId = project.fileId;
+  if (!fileId) {
+    const existing = await findFile(DRIVE.projectFile, project.folderId);
+    if (!existing) return null;
+    fileId = existing.id;
+    project.fileId = fileId;
+  }
+  return readJsonFile(fileId);
+}
+
 async function loadArtifacts(project) {
-  const existing = await findFile(DRIVE.artifactsFile, project.folderId);
-  if (!existing) return [];
-  const data = await readJsonFile(existing.id);
+  const data = await readProjectFile(project);
   const artifacts = data && Array.isArray(data.artifacts) ? data.artifacts : [];
   return artifacts.map((artifact) => normalizeArtifact(artifact, project));
 }
 
+// Artifacts live inside project.json, so saving them rewrites the single project record.
 async function saveArtifacts(project, artifacts) {
   const normalized = artifacts.map((artifact) => normalizeArtifact(artifact, project));
-  const existing = await findFile(DRIVE.artifactsFile, project.folderId);
-  await writeJsonFile({
-    name: DRIVE.artifactsFile,
-    parentId: project.folderId,
-    existingId: existing ? existing.id : null,
-    data: {
-      version: 1,
-      projectId: project.id,
-      projectName: project.name,
-      updatedAt: new Date().toISOString(),
-      artifacts: normalized,
-    },
-    errorLabel: 'Could not save the project artifact index in Google Drive.',
-  });
+  project.artifacts = normalized;
+  await saveProjectMetadata(project);
   return normalized;
 }
 
@@ -507,209 +564,7 @@ async function createGoogleFile(project, title, artifactId, type) {
   };
 }
 
-/* ---------- Insights ledger (Phase 1: capture behaviour events) ---------- */
-
-let insightsCache = null;
-
-function insightsMonthKey(date) {
-  return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
-}
-
-function insightsDayKey(iso) {
-  const d = new Date(iso);
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-}
-
-function insightsDayDiff(aKey, bKey) {
-  const [ay, am, ad] = aKey.split('-').map(Number);
-  const [by, bm, bd] = bKey.split('-').map(Number);
-  return Math.round((new Date(by, bm - 1, bd) - new Date(ay, am - 1, ad)) / 86400000);
-}
-
-function emptyInsights() {
-  return {
-    version: 1,
-    seen: {},
-    completed: {},
-    totals: { bookmarksAdded: 0, projectsCreated: 0, projectsCompleted: 0 },
-    streak: { current: 0, longest: 0, lastActiveDate: null },
-    lastSync: null,
-  };
-}
-
-async function ensureInsightsFolder() {
-  const { rootFolderId } = await ensureStructure();
-  let id = localStorage.getItem(profileKey(STORAGE_KEYS.driveInsights));
-  if (id && !(await folderExists(id))) {
-    // Insights folder was deleted in Drive -> drop the stale local snapshot so no phantom counts remain.
-    id = null;
-    insightsCache = null;
-    try {
-      localStorage.removeItem(profileKey(STORAGE_KEYS.insightsCache));
-    } catch {
-      /* ignore */
-    }
-  }
-  if (!id) {
-    id = await ensureFolder(DRIVE.insightsFolder, rootFolderId);
-    localStorage.setItem(profileKey(STORAGE_KEYS.driveInsights), id);
-  }
-  return id;
-}
-
-async function loadInsightsState() {
-  if (insightsCache) return insightsCache;
-  try {
-    const local = JSON.parse(localStorage.getItem(profileKey(STORAGE_KEYS.insightsCache)) || 'null');
-    if (local && local.version) insightsCache = local;
-  } catch {
-    /* ignore corrupt local cache */
-  }
-  if (state.token) {
-    const folderId = await ensureInsightsFolder();
-    const existing = await findFile(DRIVE.insightsState, folderId);
-    if (existing) {
-      const data = await readJsonFile(existing.id);
-      if (data && data.version) insightsCache = data;
-    }
-  }
-  if (!insightsCache) insightsCache = emptyInsights();
-  return insightsCache;
-}
-
-async function saveInsightsState(data) {
-  insightsCache = data;
-  try {
-    localStorage.setItem(profileKey(STORAGE_KEYS.insightsCache), JSON.stringify(data));
-  } catch {
-    /* ignore quota errors */
-  }
-  if (!state.token) return;
-  const folderId = await ensureInsightsFolder();
-  const existing = await findFile(DRIVE.insightsState, folderId);
-  await writeJsonFile({
-    name: DRIVE.insightsState,
-    parentId: folderId,
-    existingId: existing ? existing.id : null,
-    data,
-    errorLabel: 'Could not save insights state to Google Drive.',
-  });
-}
-
-// Append events into monthly partition files so each stays small and cheap to load.
-async function appendInsightEvents(events) {
-  if (!events.length || !state.token) return;
-  const folderId = await ensureInsightsFolder();
-  const byMonth = new Map();
-  events.forEach((event) => {
-    const key = insightsMonthKey(new Date(event.at));
-    if (!byMonth.has(key)) byMonth.set(key, []);
-    byMonth.get(key).push(event);
-  });
-  for (const [key, monthEvents] of byMonth) {
-    const name = 'events-' + key + '.json';
-    const existing = await findFile(name, folderId);
-    const current = existing ? await readJsonFile(existing.id) : null;
-    const list = current && Array.isArray(current.events) ? current.events : [];
-    list.push(...monthEvents);
-    await writeJsonFile({
-      name,
-      parentId: folderId,
-      existingId: existing ? existing.id : null,
-      data: { version: 1, month: key, events: list },
-      errorLabel: 'Could not save insights events to Google Drive.',
-    });
-  }
-}
-
-// Streak rewards action; count each active day once, reset if a day is missed.
-function bumpStreak(insights, atISO) {
-  const day = insightsDayKey(atISO);
-  const last = insights.streak.lastActiveDate;
-  if (last === day) return;
-  insights.streak.current = last && insightsDayDiff(last, day) === 1 ? insights.streak.current + 1 : 1;
-  insights.streak.lastActiveDate = day;
-  insights.streak.longest = Math.max(insights.streak.longest, insights.streak.current);
-}
-
-// New inbox items become bookmark_added events, timestamped by their source-added time.
-export async function recordBookmarksSeen(sourceId, items) {
-  if (!sourceId || !Array.isArray(items) || items.length === 0) return;
-  const insights = await loadInsightsState();
-  const seen = insights.seen[sourceId] || (insights.seen[sourceId] = {});
-  const nowISO = new Date().toISOString();
-  const newEvents = [];
-  items.forEach((item) => {
-    const refId = item && item.refId;
-    if (!refId || seen[refId]) return;
-    seen[refId] = nowISO;
-    insights.totals.bookmarksAdded += 1;
-    newEvents.push({
-      id: uid(),
-      type: 'bookmark_added',
-      at: item.addedAt || nowISO,
-      source: sourceId,
-      refId,
-      title: item.title || '',
-    });
-  });
-  if (newEvents.length === 0) return;
-  insights.lastSync = nowISO;
-  if (newEvents.length) await appendInsightEvents(newEvents);
-  await saveInsightsState(insights);
-}
-
-export async function recordProjectCreated(project) {
-  const insights = await loadInsightsState();
-  const at = project.createdAt || new Date().toISOString();
-  insights.totals.projectsCreated += 1;
-  bumpStreak(insights, at);
-  await appendInsightEvents([
-    {
-      id: uid(),
-      type: 'project_created',
-      at,
-      projectId: project.id,
-      refId: project.bookmark && project.bookmark.refId ? project.bookmark.refId : null,
-      source: project.bookmark && project.bookmark.source ? project.bookmark.source : null,
-      title: project.name,
-    },
-  ]);
-  await saveInsightsState(insights);
-}
-
-export async function recordProjectCompleted(project) {
-  const insights = await loadInsightsState();
-  insights.completed = insights.completed || {};
-  if (insights.completed[project.id]) return;
-  const at = new Date().toISOString();
-  insights.completed[project.id] = at;
-  insights.totals.projectsCompleted += 1;
-  bumpStreak(insights, at);
-  await appendInsightEvents([{ id: uid(), type: 'project_completed', at, projectId: project.id, title: project.name }]);
-  await saveInsightsState(insights);
-}
-
-export async function loadInsights() {
-  return loadInsightsState();
-}
-
-// Read the last `months` monthly partitions and return a merged, chronological event list.
-export async function loadInsightEvents(months = 6) {
-  if (!state.token) return [];
-  const folderId = await ensureInsightsFolder();
-  const now = new Date();
-  const events = [];
-  for (let i = 0; i < months; i += 1) {
-    const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const name = 'events-' + insightsMonthKey(monthDate) + '.json';
-    const existing = await findFile(name, folderId);
-    if (!existing) continue;
-    const data = await readJsonFile(existing.id);
-    if (data && Array.isArray(data.events)) events.push(...data.events);
-  }
-  return events.sort((a, b) => new Date(a.at) - new Date(b.at));
-}
+/* ---------- Project creation ---------- */
 
 export async function createProjectFromItem(item, formData) {
   const name = String(formData.name || item?.title || '').trim();
@@ -741,17 +596,23 @@ export async function createProjectFromItem(item, formData) {
     tags: Array.isArray(formData.tags) ? formData.tags : [],
     status: 'In progress',
     progress: 0,
+    completedAt: null,
     createdAt: new Date().toISOString(),
     artifacts: [],
   };
+
+  // Write project.json first so its file id can be stored in the index entry.
+  await saveProjectMetadata(project);
 
   index.projects.unshift({
     id: project.id,
     name,
     slug,
     folderId,
+    fileId: project.fileId,
     bookmarkRef: project.bookmarkRef,
     createdAt: project.createdAt,
+    completedAt: project.completedAt,
     description: project.description,
     category: project.category,
     tags: project.tags,
@@ -760,16 +621,9 @@ export async function createProjectFromItem(item, formData) {
   });
 
   await saveProjectIndex(index);
-  await saveProjectMetadata(project);
-  await saveArtifacts(project, []);
 
   state.projects.unshift(project);
   saveProjects();
-  try {
-    await recordProjectCreated(project);
-  } catch {
-    /* insights are best-effort */
-  }
   return project;
 }
 
