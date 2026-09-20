@@ -164,13 +164,16 @@ function artifactList(project, tab) {
         .map((artifact) => {
           const spec = artifactSpec(artifact);
           return (
+            '<div class="file-row-wrap">' +
             '<button class="file-row" type="button" data-open-artifact="' + escapeHtml(String(artifact.id)) + '">' +
             '<span class="file-row__icon">' + spec.icon + '</span>' +
             '<span class="file-row__text"><strong>' + escapeHtml(artifact.title || spec.label) + '</strong>' +
             '<small>' + escapeHtml(artifact.fileName || spec.label) + '</small></span>' +
             '<span class="file-row__type">' + escapeHtml(spec.label) + '</span>' +
             '<span class="file-row__open">Open ↗</span>' +
-            '</button>'
+            '</button>' +
+            '<button class="file-row__remove" type="button" data-remove-artifact="' + escapeHtml(String(artifact.id)) + '" aria-label="Remove">Remove</button>' +
+            '</div>'
           );
         })
         .join('')

@@ -105,9 +105,39 @@ export async function signIn(options = {}) {
   return profile;
 }
 
+// Remove every app-owned key so nothing leaks between accounts on a shared browser; Drive re-hydrates on next sign-in.
+function clearAppStorage() {
+  ['localStorage', 'sessionStorage'].forEach((storeName) => {
+    try {
+      const store = window[storeName];
+      Object.keys(store)
+        .filter((key) => key.startsWith('domark'))
+        .forEach((key) => store.removeItem(key));
+    } catch {
+      /* storage unavailable */
+    }
+  });
+}
+
+// Best-effort revocation of the Google grant; failures are non-fatal.
+function revokeToken(token) {
+  if (!token) return;
+  try {
+    fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(token), {
+      method: 'POST',
+      mode: 'no-cors',
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* ignore */
+  }
+}
+
 export function signOut() {
+  const token = state.token;
   state.token = null;
   state.profile = null;
+  state.projects = [];
   Object.values(state.sources).forEach((slice) => {
     slice.items = [];
     slice.status = 'idle';
@@ -115,6 +145,8 @@ export function signOut() {
     slice.fetchedAt = null;
   });
   clearProfile();
+  clearAppStorage();
+  revokeToken(token);
 }
 
 export async function trySilentSignIn() {

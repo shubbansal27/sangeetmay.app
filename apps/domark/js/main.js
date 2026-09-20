@@ -4,7 +4,7 @@ import { state, saveProjects, loadProjects, restoreProfile, currentProject } fro
 import { showToast, setLoginStatus, clearLoginStatus, showBusy, hideBusy, setBusyMessage } from './feedback.js';
 import { byId, escapeHtml } from './utils.js';
 import { signIn, signOut, trySilentSignIn } from './auth.js';
-import { createArtifact, syncProjectArtifacts, saveProjectStatus, saveProjectDetails, createRecordingArtifact, createLinkArtifact, hydrateProjects, loadProjectMetadata, deleteProject, resetProfileCaches, loadProfilesList, saveProfilesList, deleteProfileFolder, resetProfileData } from './drive.js';
+import { createArtifact, syncProjectArtifacts, saveProjectStatus, saveProjectDetails, createRecordingArtifact, createLinkArtifact, hydrateProjects, loadProjectMetadata, deleteProject, deleteArtifact, resetProfileCaches, loadProfilesList, saveProfilesList, deleteProfileFolder, resetProfileData } from './drive.js';
 import { refreshAllSources, refreshActiveSource, ensureActiveSourceLoaded, fetchYouTubePlaylists, removeInboxItem } from './sources.js';
 import { SOURCES, YOUTUBE_PLAYLIST_TITLE, STORAGE_KEYS } from './config.js';
 import {
@@ -39,9 +39,11 @@ import {
   openLinkModal,
   closeLinkModal,
   submitLinkModal,
+  nextArtifactName,
 } from './modals.js';
 import { render } from './render.js';
 import { refreshInsights, resetInsights, showInsights } from './insights.js';
+import { deleteYouTubeVideo } from './youtube.js';
 import { loadAnnouncements, markAnnouncementsSeen } from './announcements.js';
 import { createTimebox, deleteTimebox } from './calendar.js';
 import { refreshTimeboxes, resetTimeboxes } from './timebox.js';
@@ -62,17 +64,28 @@ function handleCategoryAdd(select) {
   if (name) showToast('Category "' + name + '" added.');
 }
 
-// Reconcile the Drive-stored profiles list with the local cache after sign-in.
+// Drive is the source of truth for the profiles list; local is just a cache.
 async function syncProfilesList() {
   try {
     const remote = await loadProfilesList();
-    const merged = normalizeProfiles([...(remote || []), ...listProfilesLocal()]);
-    saveProfilesLocal(merged);
-    if (state.token && (!remote || remote.length !== merged.length)) {
-      try { await saveProfilesList(merged); } catch { /* non-fatal */ }
+    if (remote) {
+      const activeName = getActiveProfile();
+      const remoteHasActive = activeName === DEFAULT_PROFILE || remote.map((n) => String(n).trim()).includes(activeName);
+      // Adopt the Drive list, dropping any local-only profiles (deletions on Drive win).
+      saveProfilesLocal(remote);
+      if (!remoteHasActive) {
+        // The active profile was deleted elsewhere; fall back to default and reload its data.
+        await switchProfile(DEFAULT_PROFILE);
+        return;
+      }
+    } else if (state.token) {
+      // No profiles.json yet: seed Drive from the local list (at least default + active).
+      const seed = listProfilesLocal();
+      saveProfilesLocal(seed);
+      try { await saveProfilesList(seed); } catch { /* non-fatal */ }
     }
   } catch {
-    /* offline or no access yet */
+    /* offline or no access yet: keep the local cache */
   }
   render();
 }
@@ -304,6 +317,8 @@ async function deleteProfileFlow(name) {
   } finally {
     hideBusy();
   }
+  // Refresh the shell profile switcher so the deleted profile drops out immediately.
+  render();
   showToast('Deleted ' + name + ' profile.');
 }
 
@@ -355,7 +370,6 @@ function clearProfileLocalData(name) {
     [
       STORAGE_KEYS.projects,
       STORAGE_KEYS.settings,
-      STORAGE_KEYS.customCategories,
       STORAGE_KEYS.driveProjects,
     ].forEach((key) => localStorage.removeItem(key));
     return;
@@ -499,7 +513,7 @@ async function addArtifactFlow(trigger) {
     state.selectedProjectArtifactId = artifact.id;
     state.selectedProjectTab = 'docs';
     render();
-    window.open(artifact.url, '_blank', 'noopener,noreferrer');
+    openExternal(artifact.url);
   } catch (error) {
     showToast(error.message || 'Could not create the file.');
   } finally {
@@ -574,7 +588,10 @@ async function saveOverviewEdits() {
 async function recordArtifactFlow() {
   const project = currentProject();
   if (!project) return;
-  const result = await openRecorder();
+  const result = await openRecorder({
+    camera: nextArtifactName('Video recording'),
+    screen: nextArtifactName('Screen recording'),
+  });
   if (!result) return;
 
   showBusy('Saving recording…');
@@ -583,7 +600,7 @@ async function recordArtifactFlow() {
     state.selectedProjectArtifactId = artifact.id;
     state.selectedProjectTab = 'recordings';
     render();
-    if (artifact.url) window.open(artifact.url, '_blank', 'noopener,noreferrer');
+    if (artifact.url) openExternal(artifact.url);
   } catch (error) {
     showToast(error.message || 'Could not save the recording.');
   } finally {
@@ -617,8 +634,65 @@ function openArtifact(artifactId) {
   if (artifact && artifact.url) {
     state.selectedProjectArtifactId = artifact.id;
     render();
-    window.open(artifact.url, '_blank', 'noopener,noreferrer');
+    openExternal(artifact.url);
   }
+}
+
+// Delete an artifact from the project after confirmation (also trashes its Drive file for docs/diagrams).
+async function removeArtifactFlow(artifactId) {
+  const project = currentProject();
+  if (!project) return;
+  const artifact = (project.artifacts || []).find((entry) => String(entry.id) === String(artifactId));
+  if (!artifact) return;
+  const name = artifact.title || 'this item';
+
+  // Recordings are YouTube uploads: detach from the project, and optionally delete the video permanently.
+  if (artifact.type === 'recording') {
+    if (!window.confirm('Remove "' + name + '" from this project?')) return;
+    const alsoDelete = Boolean(artifact.fileId) &&
+      window.confirm('Also permanently delete this video from your YouTube channel?\nThis cannot be undone. Click Cancel to keep it on YouTube.');
+    showBusy('Removing…');
+    try {
+      if (alsoDelete) {
+        const ok = await deleteYouTubeVideo(artifact.fileId);
+        if (!ok) showToast('Removed here, but the YouTube video could not be deleted.');
+      }
+      await deleteArtifact(project, artifactId);
+      if (String(state.selectedProjectArtifactId) === String(artifactId)) state.selectedProjectArtifactId = null;
+      render();
+    } catch (error) {
+      showToast(error.message || 'Could not remove this recording.');
+    } finally {
+      hideBusy();
+    }
+    return;
+  }
+
+  if (!window.confirm('Remove "' + name + '"?')) return;
+  showBusy('Removing…');
+  try {
+    await deleteArtifact(project, artifactId);
+    if (String(state.selectedProjectArtifactId) === String(artifactId)) state.selectedProjectArtifactId = null;
+    render();
+  } catch (error) {
+    showToast(error.message || 'Could not remove this item.');
+  } finally {
+    hideBusy();
+  }
+}
+
+// Route Google editor links through the account chooser so the owning account is selected/signed in, not a dead "signed out" tab.
+function openExternal(url) {
+  if (!url) return;
+  const email = state.profile && state.profile.email;
+  if (email && /^https:\/\/(docs|drive)\.google\.com\//i.test(url)) {
+    const chooser =
+      'https://accounts.google.com/AccountChooser?Email=' + encodeURIComponent(email) +
+      '&continue=' + encodeURIComponent(url);
+    window.open(chooser, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 function removeProject(projectId) {
@@ -685,6 +759,11 @@ function wireAuth() {
   if (signOutButton) {
     signOutButton.addEventListener('click', () => {
       signOut();
+      // Drop in-memory caches held outside state so nothing carries into the next session.
+      resetProfileCaches();
+      resetSettingsCache();
+      resetInsights();
+      resetTimeboxes();
       render();
       showToast('Signed out.');
     });
@@ -940,6 +1019,11 @@ function wireProjects() {
       }
       if (event.target.closest('[data-add-link]')) {
         addLinkFlow();
+        return;
+      }
+      const remove = event.target.closest('[data-remove-artifact]');
+      if (remove) {
+        removeArtifactFlow(remove.dataset.removeArtifact);
         return;
       }
       const open = event.target.closest('[data-open-artifact]');

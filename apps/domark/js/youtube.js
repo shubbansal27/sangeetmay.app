@@ -109,3 +109,13 @@ export async function uploadVideo(blob, meta = {}, onProgress = () => {}) {
     xhr.send(blob);
   });
 }
+
+// Permanently delete an uploaded video from the channel (needs the youtube scope on the main session token).
+export async function deleteYouTubeVideo(videoId) {
+  if (!videoId || !state.token) return false;
+  const res = await fetch('https://www.googleapis.com/youtube/v3/videos?id=' + encodeURIComponent(videoId), {
+    method: 'DELETE',
+    headers: { Authorization: 'Bearer ' + state.token },
+  });
+  return res.ok || res.status === 404;
+}

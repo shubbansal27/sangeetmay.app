@@ -17,7 +17,6 @@ export const STORAGE_KEYS = {
   activeProfile: 'domark_active_profile',
   profiles: 'domark_profiles',
   announcementsSeen: 'domark_announcements_seen',
-  customCategories: 'domark_custom_categories',
   settings: 'domark_settings',
 };
 

@@ -1,6 +1,6 @@
 // Modal dialogs: create-project form and the artifact naming prompt.
 
-import { state } from './store.js';
+import { state, currentProject } from './store.js';
 import { ARTIFACT_TYPES } from './config.js';
 import { byId } from './utils.js';
 import { showToast } from './feedback.js';
@@ -141,6 +141,30 @@ export async function handleProjectSubmit(event) {
 
 let artifactResolver = null;
 
+// Next default name for an artifact type in the current project: "<label> <n>".
+export function nextArtifactName(label) {
+  const project = currentProject();
+  const artifacts = (project && project.artifacts) || [];
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('^' + escaped + '\\s+(\\d+)$', 'i');
+  let max = 0;
+  artifacts.forEach((artifact) => {
+    const match = re.exec(String(artifact.name || artifact.title || '').trim());
+    if (match) max = Math.max(max, Number(match[1]));
+  });
+  return label + ' ' + (max + 1);
+}
+
+// True while the field still holds an untouched auto name ("<label>" or "<label> <n>").
+function isDefaultArtifactName(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return true;
+  return Object.values(ARTIFACT_TYPES).some((spec) => {
+    const escaped = spec.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('^' + escaped + '(\\s+\\d+)?$', 'i').test(trimmed);
+  });
+}
+
 // trigger is 'drawio' for the design tab or 'docs' for the docs tab (Doc/Sheet/Slides).
 export function openArtifactModal(trigger) {
   const modal = byId('artifact-modal');
@@ -158,10 +182,10 @@ export function openArtifactModal(trigger) {
   if (isDocs) {
     if (typeSelect) typeSelect.value = 'gdoc';
     if (titleEl) titleEl.textContent = 'New document';
-    if (input) input.value = ARTIFACT_TYPES.gdoc.label;
+    if (input) input.value = nextArtifactName(ARTIFACT_TYPES.gdoc.label);
   } else {
     if (titleEl) titleEl.textContent = 'New design board';
-    if (input) input.value = ARTIFACT_TYPES.drawio.label;
+    if (input) input.value = nextArtifactName(ARTIFACT_TYPES.drawio.label);
   }
 
   modal.classList.add('is-open');
@@ -181,9 +205,8 @@ export function syncArtifactName() {
   const typeSelect = byId('artifact-type');
   const input = byId('artifact-name');
   if (!typeSelect || !input) return;
-  const labels = Object.values(ARTIFACT_TYPES).map((spec) => spec.label);
-  if (input.value.trim() === '' || labels.includes(input.value.trim())) {
-    input.value = ARTIFACT_TYPES[typeSelect.value]?.label || input.value;
+  if (isDefaultArtifactName(input.value)) {
+    input.value = nextArtifactName(ARTIFACT_TYPES[typeSelect.value]?.label || 'File');
   }
 }
 
@@ -223,7 +246,7 @@ export function openLinkModal() {
   const url = byId('link-url');
   const title = byId('link-title');
   if (url) url.value = '';
-  if (title) title.value = '';
+  if (title) title.value = nextArtifactName(ARTIFACT_TYPES.link.label);
 
   modal.classList.add('is-open');
   modal.setAttribute('aria-hidden', 'false');
