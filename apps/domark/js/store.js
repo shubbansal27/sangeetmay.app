@@ -13,6 +13,12 @@ export const state = {
   profile: null,
   token: null,
   projects: [],
+  // Projects shared with the signed-in account (Drive sharedWithMe); account-global, not per-profile.
+  sharedProjects: [],
+  // Which Projects sub-nav is active: 'owned' | 'shared'.
+  projectScope: 'owned',
+  sharedProjectsLoading: false,
+  sharedProjectsLoaded: false,
   selectedProjectId: null,
   selectedProjectCategory: null,
   selectedProjectStatus: 'all',
@@ -59,7 +65,11 @@ export function clearProfile() {
 }
 
 export function currentProject() {
-  return state.projects.find((project) => project.id === state.selectedProjectId) || null;
+  return (
+    state.projects.find((project) => project.id === state.selectedProjectId) ||
+    state.sharedProjects.find((project) => project.id === state.selectedProjectId) ||
+    null
+  );
 }
 
 state.projects = loadProjects();

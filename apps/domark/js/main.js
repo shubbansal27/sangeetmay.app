@@ -4,7 +4,7 @@ import { state, saveProjects, loadProjects, restoreProfile, currentProject } fro
 import { showToast, setLoginStatus, clearLoginStatus, showBusy, hideBusy, setBusyMessage } from './feedback.js';
 import { byId, escapeHtml } from './utils.js';
 import { signIn, signOut, trySilentSignIn } from './auth.js';
-import { createArtifact, syncProjectArtifacts, saveProjectStatus, saveProjectDetails, createRecordingArtifact, createLinkArtifact, hydrateProjects, loadProjectMetadata, deleteProject, deleteArtifact, resetProfileCaches, loadProfilesList, saveProfilesList, deleteProfileFolder, resetProfileData } from './drive.js';
+import { createArtifact, syncProjectArtifacts, saveProjectStatus, saveProjectDetails, createRecordingArtifact, createLinkArtifact, hydrateProjects, hydrateSharedProjects, loadProjectMetadata, deleteProject, deleteArtifact, resetProfileCaches, loadProfilesList, saveProfilesList, deleteProfileFolder, resetProfileData } from './drive.js';
 import { refreshAllSources, refreshActiveSource, ensureActiveSourceLoaded, fetchYouTubePlaylists, removeInboxItem } from './sources.js';
 import { SOURCES, YOUTUBE_PLAYLIST_TITLE, STORAGE_KEYS } from './config.js';
 import {
@@ -40,6 +40,10 @@ import {
   closeLinkModal,
   submitLinkModal,
   nextArtifactName,
+  openShareModal,
+  closeShareModal,
+  handleShareSubmit,
+  handleUnshare,
 } from './modals.js';
 import { render } from './render.js';
 import { refreshInsights, resetInsights, showInsights } from './insights.js';
@@ -473,6 +477,30 @@ async function loadProjectsFromDrive() {
   }
 }
 
+// Fetch projects shared with the account (account-global, independent of the active profile).
+async function loadSharedProjectsFromDrive() {
+  if (!state.token) return;
+  state.sharedProjectsLoading = true;
+  render();
+  try {
+    await hydrateSharedProjects();
+  } finally {
+    state.sharedProjectsLoading = false;
+    render();
+  }
+}
+
+// Switch the Projects sub-nav; lazy-load the shared list the first time it is opened.
+function switchProjectScope(scope) {
+  const next = scope === 'shared' ? 'shared' : 'owned';
+  if (state.projectScope === next) return;
+  state.projectScope = next;
+  state.selectedProjectCategory = null;
+  state.selectedProjectStatus = 'all';
+  render();
+  if (next === 'shared' && !state.sharedProjectsLoaded) loadSharedProjectsFromDrive();
+}
+
 async function openProject(projectId) {
   state.selectedProjectId = projectId;
   state.selectedProjectTab = 'overview';
@@ -764,6 +792,10 @@ function wireAuth() {
       resetSettingsCache();
       resetInsights();
       resetTimeboxes();
+      // Shared projects are account-global; clear them on sign-out.
+      state.sharedProjects = [];
+      state.sharedProjectsLoaded = false;
+      state.projectScope = 'owned';
       render();
       showToast('Signed out.');
     });
@@ -934,8 +966,14 @@ function wireProjects() {
         handleBreadcrumb(crumb.dataset.crumb, crumb.dataset.crumbValue);
         return;
       }
+      const scopeTab = event.target.closest('[data-project-scope]');
+      if (scopeTab) {
+        switchProjectScope(scopeTab.dataset.projectScope);
+        return;
+      }
       if (event.target.closest('[data-refresh-projects]')) {
-        loadProjectsFromDrive();
+        if (state.projectScope === 'shared') loadSharedProjectsFromDrive();
+        else loadProjectsFromDrive();
         return;
       }
       if (event.target.closest('[data-new-project]')) {
@@ -975,6 +1013,17 @@ function wireProjects() {
         state.selectedProjectId = null;
         state.editingOverview = false;
         render();
+        return;
+      }
+      const shareBtn = event.target.closest('[data-share-project]');
+      if (shareBtn) {
+        openShareModal(shareBtn.dataset.shareProject);
+        return;
+      }
+      // Shared projects are read-only: block every mutating action below.
+      if (currentProject()?.readOnly) {
+        const open = event.target.closest('[data-open-artifact]');
+        if (open) openArtifact(open.dataset.openArtifact);
         return;
       }
       const removeInDetail = event.target.closest('[data-remove-project]');
@@ -1079,10 +1128,19 @@ function wireModals() {
     if (event.target.dataset.closeModal === 'true') closeLinkModal(null);
   });
 
+  byId('share-form')?.addEventListener('submit', handleShareSubmit);
+  byId('btn-share-close')?.addEventListener('click', closeShareModal);
+  byId('share-modal')?.addEventListener('click', (event) => {
+    if (event.target.dataset.closeModal === 'true') closeShareModal();
+    const unshare = event.target.closest('[data-unshare]');
+    if (unshare) handleUnshare(unshare.dataset.unshare);
+  });
+
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
     if (isRecorderOpen()) closeRecorder();
     else if (byId('settings-modal')?.classList.contains('is-open')) closeSettings();
+    else if (byId('share-modal')?.classList.contains('is-open')) closeShareModal();
     else if (byId('link-modal')?.classList.contains('is-open')) closeLinkModal(null);
     else if (byId('artifact-modal')?.classList.contains('is-open')) closeArtifactModal(null);
     else if (byId('project-modal')?.classList.contains('is-open')) closeProjectModal();

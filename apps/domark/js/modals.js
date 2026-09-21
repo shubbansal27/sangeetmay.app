@@ -2,9 +2,9 @@
 
 import { state, currentProject } from './store.js';
 import { ARTIFACT_TYPES } from './config.js';
-import { byId } from './utils.js';
+import { byId, escapeHtml } from './utils.js';
 import { showToast } from './feedback.js';
-import { createProjectFromItem } from './drive.js';
+import { createProjectFromItem, shareProject, unshareProject, listProjectPermissions } from './drive.js';
 import { allCategories, categoryOptionsHtml } from './categories.js';
 import { itemMeta, metaFieldHtml } from './inbox.js';
 import { render } from './render.js';
@@ -287,4 +287,104 @@ export function submitLinkModal(event) {
   }
   const title = (byId('link-title')?.value || '').trim();
   closeLinkModal({ url, title });
+}
+
+/* ---------- Share modal ---------- */
+
+let shareProjectId = null;
+
+function ownedProjectById(id) {
+  return state.projects.find((project) => project.id === id) || null;
+}
+
+function renderSharePeople(people) {
+  const list = byId('share-people-list');
+  if (!list) return;
+  if (!people.length) {
+    list.innerHTML = '<p class="muted share-people__empty">Not shared with anyone yet.</p>';
+    return;
+  }
+  list.innerHTML = people
+    .map((person) => {
+      const name = person.displayName || person.emailAddress || 'User';
+      const email = person.emailAddress && person.emailAddress !== name ? person.emailAddress : '';
+      return (
+        '<div class="share-person">' +
+        '<span class="share-person__text"><strong>' + escapeHtml(name) + '</strong>' +
+        (email ? '<small>' + escapeHtml(email) + '</small>' : '') + '</span>' +
+        '<button class="btn btn--ghost btn--sm" type="button" data-unshare="' + escapeHtml(person.id) + '">Remove</button>' +
+        '</div>'
+      );
+    })
+    .join('');
+}
+
+async function refreshSharePeople() {
+  const project = ownedProjectById(shareProjectId);
+  const list = byId('share-people-list');
+  if (!project) return;
+  if (list) list.innerHTML = '<p class="muted share-people__empty">Loading…</p>';
+  const people = await listProjectPermissions(project);
+  project.shared = people.length > 0;
+  renderSharePeople(people);
+}
+
+export function openShareModal(projectId) {
+  const modal = byId('share-modal');
+  const project = ownedProjectById(projectId);
+  if (!modal || !project) return;
+  shareProjectId = projectId;
+
+  const email = byId('share-email');
+  if (email) email.value = '';
+
+  modal.classList.add('is-open');
+  modal.setAttribute('aria-hidden', 'false');
+  window.setTimeout(() => byId('share-email')?.focus(), 60);
+  refreshSharePeople();
+}
+
+export function closeShareModal() {
+  const modal = byId('share-modal');
+  if (!modal) return;
+  modal.classList.remove('is-open');
+  modal.setAttribute('aria-hidden', 'true');
+  shareProjectId = null;
+  render();
+}
+
+export async function handleShareSubmit(event) {
+  event.preventDefault();
+  const project = ownedProjectById(shareProjectId);
+  if (!project) return;
+  const emailField = byId('share-email');
+  const email = (emailField?.value || '').trim();
+  if (!email) {
+    showToast('Enter an email address to share with.');
+    return;
+  }
+  const submit = document.querySelector('#share-form [type="submit"]');
+  if (submit) submit.disabled = true;
+  try {
+    await shareProject(project, email);
+    if (emailField) emailField.value = '';
+    project.shared = true;
+    showToast('Shared with ' + email + '.');
+    await refreshSharePeople();
+  } catch (error) {
+    showToast(error.message || 'Could not share this project.');
+  } finally {
+    if (submit) submit.disabled = false;
+  }
+}
+
+export async function handleUnshare(permissionId) {
+  const project = ownedProjectById(shareProjectId);
+  if (!project || !permissionId) return;
+  try {
+    await unshareProject(project, permissionId);
+    await refreshSharePeople();
+  } catch (error) {
+    showToast(error.message || 'Could not update sharing.');
+  }
 }
