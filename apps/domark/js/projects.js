@@ -41,6 +41,65 @@ function lastUpdated(projects) {
   return times.length ? formatRelative(new Date(Math.max(...times)).toISOString()) : '—';
 }
 
+// Segmented switcher between the owner's projects and projects shared with the account.
+function scopeNav() {
+  const scope = state.projectScope === 'shared' ? 'shared' : 'owned';
+  const tab = (id, label) =>
+    '<button class="scope-tab' + (scope === id ? ' is-active' : '') +
+    '" type="button" role="tab" aria-selected="' + (scope === id) + '" data-project-scope="' + id + '">' +
+    escapeHtml(label) + '</button>';
+  return (
+    '<div class="scope-nav" role="tablist" aria-label="Project scope">' +
+    tab('owned', 'Owned by me') +
+    tab('shared', 'Shared with me') +
+    '</div>'
+  );
+}
+
+function sharedProjectCard(project) {
+  const percent = projectProgress(project);
+  const status = projectStatus(project);
+  const isComplete = percent >= 100;
+  const ownerLabel = (project.owner && (project.owner.name || project.owner.email)) || 'someone';
+  return (
+    '<div class="proj-card">' +
+    '<button class="proj-card__open" type="button" data-project-id="' + escapeHtml(project.id) + '">' +
+    '<div class="proj-card__top"><h3>' + escapeHtml(project.name) + '</h3>' +
+    '<span class="badge">' + escapeHtml(project.category || 'Others') + '</span></div>' +
+    '<p>' + escapeHtml(project.description || 'No description yet.') + '</p>' +
+    '<div class="proj-card__progress">' +
+    '<div class="proj-card__progress-head">' +
+    '<span class="status-pill' + (isComplete ? ' is-complete' : '') + '">' + escapeHtml(status) + '</span>' +
+    '<span class="proj-card__pct">' + percent + '%</span></div>' +
+    '<div class="progress-bar' + (isComplete ? ' is-complete' : '') + '">' +
+    '<span class="progress-bar__fill" style="width:' + percent + '%"></span></div>' +
+    '</div>' +
+    '<span class="proj-card__foot">Shared by ' + escapeHtml(ownerLabel) + '</span>' +
+    '</button>' +
+    '</div>'
+  );
+}
+
+function sharedListView() {
+  const head =
+    '<div class="list-head list-head--root">' +
+    '<h2>Shared with me</h2>' +
+    '<button class="btn btn--soft btn--sm list-head__end" type="button" data-refresh-projects aria-label="Refresh shared projects" title="Refresh">↻</button>' +
+    '</div>';
+  if (state.sharedProjectsLoading && state.sharedProjects.length === 0) {
+    const cards = Array.from({ length: 4 }).map(() => '<div class="cat-card cat-card--skeleton"></div>').join('');
+    return head + '<div class="card-grid">' + cards + '</div>';
+  }
+  if (!state.sharedProjects.length) {
+    return (
+      head +
+      '<div class="empty-state"><h3>No shared projects</h3>' +
+      '<p>Projects that others share with you will appear here.</p></div>'
+    );
+  }
+  return head + '<div class="card-grid">' + state.sharedProjects.map(sharedProjectCard).join('') + '</div>';
+}
+
 function categoryGrid() {
   const categories = getCategories();
   const head =
@@ -112,7 +171,8 @@ function projectList() {
         '<div class="proj-card">' +
         '<button class="proj-card__open" type="button" data-project-id="' + escapeHtml(project.id) + '">' +
         '<div class="proj-card__top"><h3>' + escapeHtml(project.name) + '</h3>' +
-        '<span class="badge">' + escapeHtml(project.category || 'Others') + '</span></div>' +
+        '<span class="badge">' + escapeHtml(project.category || 'Others') + '</span>' +
+        (project.shared ? '<span class="badge badge--shared">Shared</span>' : '') + '</div>' +
         '<p>' + escapeHtml(project.description || 'No description yet.') + '</p>' +
         '<div class="proj-card__progress">' +
         '<div class="proj-card__progress-head">' +
@@ -163,6 +223,9 @@ function artifactList(project, tab) {
     ? artifacts
         .map((artifact) => {
           const spec = artifactSpec(artifact);
+          const removeBtn = project.readOnly
+            ? ''
+            : '<button class="file-row__remove" type="button" data-remove-artifact="' + escapeHtml(String(artifact.id)) + '" aria-label="Remove">Remove</button>';
           return (
             '<div class="file-row-wrap">' +
             '<button class="file-row" type="button" data-open-artifact="' + escapeHtml(String(artifact.id)) + '">' +
@@ -172,7 +235,7 @@ function artifactList(project, tab) {
             '<span class="file-row__type">' + escapeHtml(spec.label) + '</span>' +
             '<span class="file-row__open">Open ↗</span>' +
             '</button>' +
-            '<button class="file-row__remove" type="button" data-remove-artifact="' + escapeHtml(String(artifact.id)) + '" aria-label="Remove">Remove</button>' +
+            removeBtn +
             '</div>'
           );
         })
@@ -182,7 +245,7 @@ function artifactList(project, tab) {
   return (
     '<div class="panel-block">' +
     '<div class="panel-block__head"><h3>' + cfg.heading + '</h3>' +
-    cfg.addButton + '</div>' +
+    (project.readOnly ? '' : cfg.addButton) + '</div>' +
     '<div class="file-list">' + rows + '</div>' +
     '</div>'
   );
@@ -191,6 +254,15 @@ function artifactList(project, tab) {
 function progressBlock(project) {
   const percent = projectProgress(project);
   const isComplete = percent >= 100;
+  // Shared projects are read-only in-app: no progress editing.
+  const controls = project.readOnly
+    ? ''
+    : '<div class="progress-controls">' +
+      '<input class="progress-slider" type="range" min="0" max="100" step="5" value="' + percent +
+      '" data-project-progress aria-label="Completion percentage" />' +
+      '<button class="btn btn--primary btn--sm" type="button" data-project-complete' +
+      (isComplete ? ' disabled' : '') + '>' + (isComplete ? 'Completed' : 'Mark complete') + '</button>' +
+      '</div>';
 
   return (
     '<div class="panel-block progress-block">' +
@@ -198,12 +270,7 @@ function progressBlock(project) {
     '<span class="progress-block__value" data-progress-label>' + percent + '%</span></div>' +
     '<div class="progress-bar' + (isComplete ? ' is-complete' : '') + '">' +
     '<span class="progress-bar__fill" data-progress-fill style="width:' + percent + '%"></span></div>' +
-    '<div class="progress-controls">' +
-    '<input class="progress-slider" type="range" min="0" max="100" step="5" value="' + percent +
-    '" data-project-progress aria-label="Completion percentage" />' +
-    '<button class="btn btn--primary btn--sm" type="button" data-project-complete' +
-    (isComplete ? ' disabled' : '') + '>' + (isComplete ? 'Completed' : 'Mark complete') + '</button>' +
-    '</div>' +
+    controls +
     '</div>'
   );
 }
@@ -251,7 +318,7 @@ function overviewEdit(project) {
 const HIDDEN_SOURCE_FIELDS = new Set(['Status', 'Due', 'Updated', 'Urgency', 'Source', 'Type']);
 
 function overviewTab(project) {
-  if (state.editingOverview) return overviewEdit(project);
+  if (state.editingOverview && !project.readOnly) return overviewEdit(project);
 
   const tags =
     Array.isArray(project.tags) && project.tags.length
@@ -280,10 +347,13 @@ function overviewTab(project) {
       : '<p class="lede">Created independently — not linked to an inbox item.</p>') +
     '</div>';
 
+  const editBtn = project.readOnly
+    ? ''
+    : '<button class="btn btn--soft btn--sm" type="button" data-edit-overview>Edit</button>';
+
   return (
     '<div class="panel-block">' +
-    '<div class="panel-block__head"><p class="kicker">Description</p>' +
-    '<button class="btn btn--soft btn--sm" type="button" data-edit-overview>Edit</button></div>' +
+    '<div class="panel-block__head"><p class="kicker">Description</p>' + editBtn + '</div>' +
     '<p class="lede">' + escapeHtml(project.description || 'No description added for this project yet.') + '</p>' +
     '<div class="meta-grid">' +
     '<div><span>Category</span><strong>' + escapeHtml(project.category || 'Others') + '</strong></div>' +
@@ -320,19 +390,33 @@ function workspace(project) {
 
   const status = projectStatus(project);
   const isComplete = projectProgress(project) >= 100;
+  const readOnly = !!project.readOnly;
+  const ownerLabel = (project.owner && (project.owner.name || project.owner.email)) || 'someone';
+
+  const actions = readOnly
+    ? '<button class="btn btn--ghost" type="button" data-project-back>← Back</button>'
+    : '<button class="btn btn--ghost" type="button" data-project-back>← Back</button>' +
+      '<button class="btn btn--soft" type="button" data-share-project="' + escapeHtml(project.id) + '">Share</button>' +
+      '<button class="btn btn--ghost workspace-head__remove" type="button" data-remove-project="' + escapeHtml(project.id) + '">Remove</button>';
+
+  const sharedPill = !readOnly && project.shared
+    ? '<span class="badge badge--shared">Shared</span>'
+    : '';
+  const banner = readOnly
+    ? '<div class="readonly-banner">Shared by ' + escapeHtml(ownerLabel) + ' · view &amp; open artifacts</div>'
+    : '';
 
   return (
     '<div class="workspace-head">' +
     '<div class="workspace-head__title">' +
     '<h1>' + escapeHtml(project.name) + '</h1>' +
     '<span class="badge">' + escapeHtml(project.category || 'Others') + '</span>' +
+    sharedPill +
     '<span class="status-dot' + (isComplete ? ' is-complete' : '') + '">' + escapeHtml(status) + '</span>' +
     '</div>' +
-    '<div class="workspace-head__actions">' +
-    '<button class="btn btn--ghost" type="button" data-project-back>← Back</button>' +
-    '<button class="btn btn--ghost workspace-head__remove" type="button" data-remove-project="' + escapeHtml(project.id) + '">Remove</button>' +
+    '<div class="workspace-head__actions">' + actions + '</div>' +
     '</div>' +
-    '</div>' +
+    banner +
     '<div class="wtabs">' + tabs + '</div>' +
     '<div class="workspace-body">' + tabContent(project) + '</div>'
   );
@@ -353,11 +437,18 @@ export function renderProjects() {
 
   detail.classList.add('hidden');
   list.classList.remove('hidden');
-  if (state.projectsLoading && state.projects.length === 0) {
-    list.innerHTML = projectsLoadingState();
+
+  if (state.projectScope === 'shared') {
+    list.innerHTML = scopeNav() + sharedListView();
     return;
   }
-  list.innerHTML = state.selectedProjectCategory ? projectList() : categoryGrid();
+
+  if (state.projectsLoading && state.projects.length === 0) {
+    list.innerHTML = scopeNav() + projectsLoadingState();
+    return;
+  }
+  // The scope switcher shows at the category root; drilling into a category hides it behind the crumb.
+  list.innerHTML = state.selectedProjectCategory ? projectList() : scopeNav() + categoryGrid();
 }
 
 function projectsLoadingState() {

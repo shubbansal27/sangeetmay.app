@@ -408,6 +408,29 @@
     </div>
   </div>
 
+  <div id="share-modal" class="modal" aria-hidden="true">
+    <div class="modal__backdrop" data-close-modal="true"></div>
+    <div class="modal__panel modal__panel--sm" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
+      <div class="modal__head">
+        <h3 id="share-modal-title">Share project</h3>
+        <button id="btn-share-close" class="icon-btn" type="button" aria-label="Close">×</button>
+      </div>
+      <form id="share-form" class="form">
+        <label class="field">
+          <span>Invite by email <small class="muted">(gets edit access)</small></span>
+          <div class="share-invite">
+            <input id="share-email" class="input" type="email" placeholder="name@example.com" autocomplete="off" />
+            <button class="btn btn--primary" type="submit">Share</button>
+          </div>
+        </label>
+      </form>
+      <div class="share-people">
+        <p class="kicker">People with access</p>
+        <div id="share-people-list" class="share-people__list"></div>
+      </div>
+    </div>
+  </div>
+
   <div id="recorder-modal" class="modal" aria-hidden="true">
     <div class="modal__backdrop" data-close-modal="true"></div>
     <div class="modal__panel modal__panel--wide" role="dialog" aria-modal="true" aria-labelledby="recorder-title">
