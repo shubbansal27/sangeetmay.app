@@ -18,6 +18,7 @@ export const STORAGE_KEYS = {
   profiles: 'domark_profiles',
   announcementsSeen: 'domark_announcements_seen',
   settings: 'domark_settings',
+  projectMaps: 'domark_project_maps',
 };
 
 export const DRIVE = {
@@ -29,6 +30,7 @@ export const DRIVE = {
   indexFile: 'projects.json',
   projectFile: 'project.json',
   settingsFile: 'settings.json',
+  mapFile: 'map.json',
 };
 
 export const PROJECT_CATEGORIES = ['System design', 'Algorithms', 'AI/ML', 'Music', 'Others'];

@@ -4,7 +4,7 @@ import { state, currentProject } from './store.js';
 import { byId, escapeHtml } from './utils.js';
 import { getActiveProfile, listProfilesLocal, DEFAULT_PROFILE } from './profiles.js';
 
-const TAB_LABELS = { overview: 'Overview', docs: 'Docs', recordings: 'Recordings', links: 'Links' };
+const TAB_LABELS = { map: 'Map', resources: 'Resources', overview: 'Overview', docs: 'Resources', recordings: 'Resources', links: 'Resources' };
 
 function profileLabel(name) {
   return name === DEFAULT_PROFILE ? 'Default' : name;
@@ -79,7 +79,7 @@ export function renderShell() {
   if (project) {
     crumbs.push({ label: project.category || 'Others', target: 'category', value: project.category || 'Others' });
     crumbs.push({ label: project.name, target: 'project' });
-    crumbs.push({ label: TAB_LABELS[state.selectedProjectTab] || 'Overview' });
+    crumbs.push({ label: TAB_LABELS[state.selectedProjectTab] || 'Map' });
   } else if (state.selectedProjectCategory) {
     crumbs.push({ label: state.selectedProjectCategory });
   }

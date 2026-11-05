@@ -126,7 +126,7 @@ export async function handleProjectSubmit(event) {
     });
     state.selectedProjectId = project.id;
     state.selectedProjectCategory = project.category;
-    state.selectedProjectTab = 'overview';
+    state.selectedProjectTab = 'map';
     state.activeView = 'projects';
     closeProjectModal();
     render();
