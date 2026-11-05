@@ -51,6 +51,7 @@ import { deleteYouTubeVideo } from './youtube.js';
 import { loadAnnouncements, markAnnouncementsSeen } from './announcements.js';
 import { createTimebox, deleteTimebox } from './calendar.js';
 import { refreshTimeboxes, resetTimeboxes } from './timebox.js';
+import { resetProjectMaps, wireProjectMap, flushProjectMap, pinToSelected, forgetProjectMap } from './projectmap.js';
 import { addCustomCategory, categoryOptionsHtml, allCategories, ADD_CATEGORY_VALUE } from './categories.js';
 
 // Handle the "+ Add new category…" entry in a category <select>: prompt, persist, then reselect.
@@ -112,11 +113,12 @@ async function switchProfile(name) {
     resetInsights();
     resetSettingsCache();
     resetTimeboxes();
+    resetProjectMaps();
     state.projects = loadProjects();
     state.selectedProjectId = null;
     state.selectedProjectCategory = null;
     state.selectedProjectStatus = 'all';
-    state.selectedProjectTab = 'overview';
+    state.selectedProjectTab = 'map';
     Object.values(state.sources).forEach((slice) => {
       slice.items = [];
       slice.status = 'idle';
@@ -344,11 +346,12 @@ async function resetProfileFlow(name) {
     resetInsights();
     resetSettingsCache();
     resetTimeboxes();
+    resetProjectMaps();
     state.projects = loadProjects();
     state.selectedProjectId = null;
     state.selectedProjectCategory = null;
     state.selectedProjectStatus = 'all';
-    state.selectedProjectTab = 'overview';
+    state.selectedProjectTab = 'map';
     Object.values(state.sources).forEach((slice) => {
       slice.items = [];
       slice.status = 'idle';
@@ -375,6 +378,7 @@ function clearProfileLocalData(name) {
       STORAGE_KEYS.projects,
       STORAGE_KEYS.settings,
       STORAGE_KEYS.driveProjects,
+      STORAGE_KEYS.projectMaps,
     ].forEach((key) => localStorage.removeItem(key));
     return;
   }
@@ -440,11 +444,12 @@ function wireSettings() {
 }
 
 function goToView(viewName) {
+  if (state.activeView === 'projects' && viewName !== 'projects') flushProjectMap();
   if (viewName === 'projects') {
     state.selectedProjectId = null;
     state.selectedProjectCategory = null;
     state.selectedProjectStatus = 'all';
-    state.selectedProjectTab = 'overview';
+    state.selectedProjectTab = 'map';
   }
   setActiveView(viewName);
   render();
@@ -503,7 +508,7 @@ function switchProjectScope(scope) {
 
 async function openProject(projectId) {
   state.selectedProjectId = projectId;
-  state.selectedProjectTab = 'overview';
+  state.selectedProjectTab = 'map';
   state.editingOverview = false;
   const project = currentProject();
   if (project) state.selectedProjectCategory = project.category || 'Others';
@@ -539,7 +544,8 @@ async function addArtifactFlow(trigger) {
   try {
     const artifact = await createArtifact(project, name, type);
     state.selectedProjectArtifactId = artifact.id;
-    state.selectedProjectTab = 'docs';
+    if (state.selectedProjectTab === 'map') pinToSelected(artifact.id);
+    else state.selectedProjectTab = 'resources';
     render();
     openExternal(artifact.url);
   } catch (error) {
@@ -626,7 +632,8 @@ async function recordArtifactFlow() {
   try {
     const artifact = await createRecordingArtifact(project, result);
     state.selectedProjectArtifactId = artifact.id;
-    state.selectedProjectTab = 'recordings';
+    if (state.selectedProjectTab === 'map') pinToSelected(artifact.id);
+    else state.selectedProjectTab = 'resources';
     render();
     if (artifact.url) openExternal(artifact.url);
   } catch (error) {
@@ -646,7 +653,8 @@ async function addLinkFlow() {
   try {
     const artifact = await createLinkArtifact(project, result);
     state.selectedProjectArtifactId = artifact.id;
-    state.selectedProjectTab = 'links';
+    if (state.selectedProjectTab === 'map') pinToSelected(artifact.id);
+    else state.selectedProjectTab = 'resources';
     render();
   } catch (error) {
     showToast(error.message || 'Could not save the link.');
@@ -728,9 +736,10 @@ function removeProject(projectId) {
   const name = target ? target.name : 'this project';
   if (!window.confirm('Remove "' + name + '"?\nThis deletes the project and its Drive folder and cannot be undone.')) return;
   state.projects = state.projects.filter((project) => project.id !== projectId);
+  forgetProjectMap(projectId);
   if (state.selectedProjectId === projectId) {
     state.selectedProjectId = null;
-    state.selectedProjectTab = 'overview';
+    state.selectedProjectTab = 'map';
   }
   const stillHasCategory = state.projects.some(
     (project) => (project.category || 'Others') === state.selectedProjectCategory
@@ -754,7 +763,7 @@ function handleBreadcrumb(target, value) {
     state.selectedProjectCategory = value || null;
     state.selectedProjectStatus = 'all';
   } else if (target === 'project') {
-    state.selectedProjectTab = 'overview';
+    state.selectedProjectTab = 'map';
   }
   render();
 }
@@ -792,6 +801,7 @@ function wireAuth() {
       resetSettingsCache();
       resetInsights();
       resetTimeboxes();
+      resetProjectMaps();
       // Shared projects are account-global; clear them on sign-out.
       state.sharedProjects = [];
       state.sharedProjectsLoaded = false;
@@ -1157,6 +1167,7 @@ function wireEvents() {
   wireNotifications();
   wireSettings();
   wireTimebox();
+  wireProjectMap();
 }
 
 async function handleTimeboxSubmit(event) {

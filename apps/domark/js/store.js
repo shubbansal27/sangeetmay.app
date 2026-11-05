@@ -22,7 +22,7 @@ export const state = {
   selectedProjectId: null,
   selectedProjectCategory: null,
   selectedProjectStatus: 'all',
-  selectedProjectTab: 'overview',
+  selectedProjectTab: 'map',
   selectedProjectArtifactId: null,
   editingOverview: false,
   projectsLoading: false,

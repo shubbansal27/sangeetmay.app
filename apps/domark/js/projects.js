@@ -5,13 +5,19 @@ import { PROJECT_CATEGORIES, ARTIFACT_TYPES } from './config.js';
 import { byId, escapeHtml, slugify, formatDateTime, formatRelative } from './utils.js';
 import { itemMeta, metaFieldHtml } from './inbox.js';
 import { categoryOptionsHtml } from './categories.js';
+import { mountProjectMap, parkProjectMap, isProjectMapMounted, refreshProjectMap } from './projectmap.js';
 
 const TABS = [
+  { id: 'map', label: 'Map' },
+  { id: 'resources', label: 'Resources' },
   { id: 'overview', label: 'Overview' },
-  { id: 'docs', label: 'Docs' },
-  { id: 'recordings', label: 'Recordings' },
-  { id: 'links', label: 'Links' },
 ];
+
+// Older builds stored per-type tab ids; they now live under Resources.
+function activeTab() {
+  const tab = state.selectedProjectTab || 'map';
+  return tab === 'docs' || tab === 'recordings' || tab === 'links' ? 'resources' : tab;
+}
 
 export function projectProgress(project) {
   const value = Number(project && project.progress);
@@ -223,6 +229,7 @@ function artifactList(project, tab) {
     ? artifacts
         .map((artifact) => {
           const spec = artifactSpec(artifact);
+          const pins = Array.isArray(artifact.nodeIds) ? artifact.nodeIds.length : 0;
           const removeBtn = project.readOnly
             ? ''
             : '<button class="file-row__remove" type="button" data-remove-artifact="' + escapeHtml(String(artifact.id)) + '" aria-label="Remove">Remove</button>';
@@ -233,6 +240,7 @@ function artifactList(project, tab) {
             '<span class="file-row__text"><strong>' + escapeHtml(artifact.title || spec.label) + '</strong>' +
             '<small>' + escapeHtml(artifact.fileName || spec.label) + '</small></span>' +
             '<span class="file-row__type">' + escapeHtml(spec.label) + '</span>' +
+            (pins ? '<span class="file-row__pins" title="Pinned on the map">📍 ' + pins + '</span>' : '') +
             '<span class="file-row__open">Open ↗</span>' +
             '</button>' +
             removeBtn +
@@ -373,18 +381,19 @@ function overviewTab(project) {
 }
 
 function tabContent(project) {
-  const tab = state.selectedProjectTab || 'overview';
-  if (tab === 'docs') return artifactList(project, 'docs');
-  if (tab === 'recordings') return artifactList(project, 'recordings');
-  if (tab === 'links') return artifactList(project, 'links');
-  return progressBlock(project) + overviewTab(project);
+  const tab = activeTab();
+  if (tab === 'resources') {
+    return artifactList(project, 'docs') + artifactList(project, 'recordings') + artifactList(project, 'links');
+  }
+  if (tab === 'overview') return progressBlock(project) + overviewTab(project);
+  return '<div class="project-map-slot" data-map-slot></div>';
 }
 
-function workspace(project) {
-  const activeTab = state.selectedProjectTab || 'overview';
+function workspaceHead(project) {
+  const current = activeTab();
   const tabs = TABS.map(
     (tab) =>
-      '<button class="wtab' + (tab.id === activeTab ? ' is-active' : '') + '" type="button" data-project-tab="' +
+      '<button class="wtab' + (tab.id === current ? ' is-active' : '') + '" type="button" data-project-tab="' +
       tab.id + '">' + tab.label + '</button>'
   ).join('');
 
@@ -417,8 +426,7 @@ function workspace(project) {
     '<div class="workspace-head__actions">' + actions + '</div>' +
     '</div>' +
     banner +
-    '<div class="wtabs">' + tabs + '</div>' +
-    '<div class="workspace-body">' + tabContent(project) + '</div>'
+    '<div class="wtabs">' + tabs + '</div>'
   );
 }
 
@@ -428,13 +436,27 @@ export function renderProjects() {
   if (!list || !detail) return;
 
   const project = currentProject();
+  const onMap = Boolean(project) && activeTab() === 'map';
+  byId('view-projects')?.classList.toggle('view--wide', Boolean(project));
   if (project) {
     list.classList.add('hidden');
     detail.classList.remove('hidden');
-    detail.innerHTML = workspace(project);
+    // Keep the live canvas in place; only the header needs refreshing.
+    if (onMap && isProjectMapMounted(project, detail)) {
+      const head = detail.querySelector('[data-workspace-head]');
+      if (head) head.innerHTML = workspaceHead(project);
+      refreshProjectMap(project);
+      return;
+    }
+    parkProjectMap();
+    detail.innerHTML =
+      '<div data-workspace-head>' + workspaceHead(project) + '</div>' +
+      '<div class="workspace-body' + (onMap ? ' workspace-body--map' : '') + '">' + tabContent(project) + '</div>';
+    if (onMap) mountProjectMap(detail.querySelector('[data-map-slot]'), project);
     return;
   }
 
+  parkProjectMap();
   detail.classList.add('hidden');
   list.classList.remove('hidden');
 
